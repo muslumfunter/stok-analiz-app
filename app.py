@@ -147,7 +147,7 @@ else:
 
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                     deep_final.to_excel(writer, sheet_name='Fark_Analizi')
-                    top_10_fark.to_frame().to_excel(writer, sheet_name='Kategori_Ozeti')
+                    top_10_fark.to_excel(writer, sheet_name='Kategori_Ozeti')
 
         # --- İNDİRME BUTONLARI ---
         st.markdown("---")
