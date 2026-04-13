@@ -10,7 +10,6 @@ import io
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
 
 st.title("📦 Operasyon Kalite - Sayım Farkı Dashboard")
-st.markdown("Ekip arkadaşlarınızla paylaşabileceğiniz interaktif sayım farkı, kayıp ve buldum analiz aracı.")
 
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
@@ -198,11 +197,11 @@ else:
                     pdf.savefig(fig3, bbox_inches='tight')
                     plt.close(fig3)
 
-            # --- TAB 3: DIVE DEEP (MALZEME NO BAZLI) ---
+            # --- TAB 3: DIVE DEEP (MALZEME NO BAZLI & FİLTRELİ) ---
             with tab3:
-                st.subheader("Malzeme No Bazlı Kayıp / Buldum Analizi")
+                st.subheader("Tüm Depo - Malzeme No (SKU) Bazlı Analiz")
                 
-                deep_df = df_master[df_master['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
+                deep_df = df_master.copy()
                 
                 deep_pivot = deep_df.pivot_table(
                     index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], 
@@ -211,13 +210,12 @@ else:
                     aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}
                 ).fillna(0)
                 
-                # Varyans mantığına göre değişim hesabı
                 deep_pivot[('Analiz', 'Fark_Adet')] = deep_pivot['Stokta Bulunan'].iloc[:, -1] - deep_pivot['Stokta Bulunan'].iloc[:, 0]
                 deep_pivot[('Analiz', 'DURUM')] = deep_pivot[('Analiz', 'Fark_Adet')].apply(lambda x: "KAYIP" if x > 0 else ("BULDUM" if x < 0 else "SABİT"))
-                deep_pivot[('Analiz', 'Fark_Fiyat_TL')] = deep_pivot[('Analiz', 'Fark_Adet')] * deep_pivot['Birim Fiyat'].iloc[:, -1]
                 
-                # --- YENİ FİLTRE MANTIĞI BURADA ---
-                # İki tarih arası değişimi olanları VEYA son günde hala açığı/fazlası olanları (Stokta Bulunan != 0) göster!
+                gecerli_fiyat = deep_pivot['Birim Fiyat'].max(axis=1)
+                deep_pivot[('Analiz', 'Fark_Fiyat_TL')] = deep_pivot[('Analiz', 'Fark_Adet')] * gecerli_fiyat
+                
                 son_tarih_stok = deep_pivot['Stokta Bulunan'].iloc[:, -1]
                 degisim_farki = deep_pivot[('Analiz', 'Fark_Adet')]
                 
@@ -225,11 +223,36 @@ else:
                 
                 if deep_final.empty:
                     st.info("💡 Seçili tarihler arasında hareket gören veya güncelde açığı bulunan bir SKU kalmamıştır.")
+                    filtered_df = deep_final
                 else:
-                    st.dataframe(deep_final.style.format({('Analiz', 'Fark_Fiyat_TL'): format_money}), use_container_width=True)
+                    # --- YENİ EKLENEN FİLTRELEME ALANI ---
+                    col_filt1, col_filt2 = st.columns(2)
+                    
+                    # 1. Durum Filtresi
+                    mevcut_durumlar = deep_final[('Analiz', 'DURUM')].unique().tolist()
+                    secilen_durumlar = col_filt1.multiselect("📌 Durum Filtresi (Kayıp/Buldum/Sabit):", options=mevcut_durumlar, default=mevcut_durumlar)
+                    
+                    # 2. Malzeme No Filtresi
+                    mevcut_skular = deep_final.index.get_level_values('malzeme no').unique().tolist()
+                    secilen_skular = col_filt2.multiselect("🔍 Malzeme No (SKU) Ara:", options=mevcut_skular, placeholder="Tümünü görmek için burayı boş bırakın...")
+                    
+                    # Filtreleri Tabloya Uygulama
+                    filtered_df = deep_final.copy()
+                    
+                    if secilen_durumlar:
+                        filtered_df = filtered_df[filtered_df[('Analiz', 'DURUM')].isin(secilen_durumlar)]
+                    else:
+                        filtered_df = filtered_df.iloc[0:0] # Hiçbir şey seçilmezse tabloyu boşaltır
+                        
+                    if secilen_skular:
+                        filtered_df = filtered_df[filtered_df.index.get_level_values('malzeme no').isin(secilen_skular)]
+                    
+                    # Filtrelenmiş tabloyu göster
+                    st.dataframe(filtered_df.style.format({('Analiz', 'Fark_Fiyat_TL'): format_money}), use_container_width=True)
 
+                # Excel indirme bağlantısı da filtrelenmiş dataframe'i baz alsın
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                    deep_final.to_excel(writer, sheet_name='MalzemeNo_Fark_Analizi')
+                    filtered_df.to_excel(writer, sheet_name='MalzemeNo_Fark_Analizi')
                     top_10_fark.to_excel(writer, sheet_name='Kategori_Ozeti')
                     degisim_df.to_excel(writer, sheet_name='Genel_Degisim_Ozeti', index=False)
 
