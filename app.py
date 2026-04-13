@@ -70,7 +70,7 @@ else:
         son_tarih = df_master['Rapor_Tarihi'].iloc[-1]
         st.success("✅ Veriler başarıyla işlendi!")
 
-        tab1, tab2, tab3 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🔍 Dive Deep (SKU Bazlı)"])
+        tab1, tab2, tab3 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🔍 Dive Deep (Malzeme No Bazlı)"])
 
         pdf_buffer = io.BytesIO()
         excel_buffer = io.BytesIO()
@@ -133,7 +133,7 @@ else:
                         'Net Tutar Değişimi (TL)': "{:,.0f}"
                     }), use_container_width=True)
 
-                # PDF İÇİN ARKA PLANDA ÇİZİM (Net Değerler)
+                # PDF İÇİN ARKA PLANDA ÇİZİM
                 fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(22, 12))
                 plt.subplots_adjust(hspace=0.4, wspace=0.3)
                 for i, urun in enumerate(izlenecek_urunler):
@@ -198,18 +198,16 @@ else:
                     pdf.savefig(fig3, bbox_inches='tight')
                     plt.close(fig3)
 
-            # --- TAB 3: DIVE DEEP (SKU BAZLI) ---
+            # --- TAB 3: DIVE DEEP (MALZEME NO BAZLI) ---
             with tab3:
-                st.subheader("Malzeme (SKU) Bazlı Kayıp / Buldum Analizi")
+                st.subheader("Malzeme No Bazlı Kayıp / Buldum Analizi")
                 
-                # Tüm izlenen ürünleri getiriyoruz (Category kısıtlaması kalktı)
+                # Tüm izlenen ürünleri getiriyoruz
                 deep_df = df_master[df_master['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                 
-                # Excel'deki SKU sütununun adı 'SKU' mu yoksa 'malzeme no' mu? Dinamik yakalama:
-                sku_col = 'SKU' if 'SKU' in deep_df.columns else 'malzeme no'
-                
+                # Doğrudan 'malzeme no' sütunu kullanılıyor
                 deep_pivot = deep_df.pivot_table(
-                    index=['Ürün Tipi', sku_col, 'Malzeme Tanımı'], 
+                    index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], 
                     columns='Rapor_Tarihi', 
                     values=['Stokta Bulunan', 'Birim Fiyat'], 
                     aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}
@@ -219,13 +217,13 @@ else:
                 deep_pivot[('Analiz', 'DURUM')] = deep_pivot[('Analiz', 'Fark_Adet')].apply(lambda x: "KAYIP" if x > 0 else "BULDUM")
                 deep_pivot[('Analiz', 'Fark_Fiyat_TL')] = deep_pivot[('Analiz', 'Fark_Adet')] * deep_pivot['Birim Fiyat'].iloc[:, -1]
                 
-                # Sadece stok farkı olan hareketli SKU'ları listele
+                # Sadece stok farkı olan hareketli kalemleri listele
                 deep_final = deep_pivot[deep_pivot[('Analiz', 'Fark_Adet')] != 0].sort_values(by=[('Analiz', 'Fark_Fiyat_TL')], ascending=False)
                 
                 st.dataframe(deep_final.style.format({('Analiz', 'Fark_Fiyat_TL'): format_money}), use_container_width=True)
 
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                    deep_final.to_excel(writer, sheet_name='SKU_Fark_Analizi')
+                    deep_final.to_excel(writer, sheet_name='MalzemeNo_Fark_Analizi')
                     top_10_fark.to_excel(writer, sheet_name='Kategori_Ozeti')
                     degisim_df.to_excel(writer, sheet_name='Genel_Degisim_Ozeti', index=False)
 
