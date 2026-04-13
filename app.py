@@ -101,17 +101,18 @@ else:
                             text=tutar_text, textposition='auto',
                             marker_color=get_colors(urun_data, 'Toplam Fiyat')
                         )])
-                        fig_t_web.update_layout(title="TOPLAM DEĞER (TL)", margin=dict(t=30, b=0, l=0, r=0), height=250)
-                        st.plotly_chart(fig_t_web, use_container_width=True)
+                      fig_m_web.update_layout(title=f"<b>{urun.upper()}</b><br>STOK ADET", margin=dict(t=50, b=0, l=0, r=0), height=250)
+                        st.plotly_chart(fig_m_web, use_container_width=True, key=f"stok_adet_grafik_{i}")
 
-                # PDF İÇİN ARKA PLANDA ÇİZİM (MATPLOTLIB)
-                fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(22, 12))
-                plt.subplots_adjust(hspace=0.4, wspace=0.3)
-                for i, urun in enumerate(izlenecek_urunler):
-                    urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
-                    ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=get_colors(urun_data, 'Stokta Bulunan'))
-                    axes[0, i].set_title(f'{urun.upper()}\nSTOK ADET', fontsize=11, fontweight='bold')
-                    label_bars(ax_m, is_money=False)
+                        # Toplam Değer (Web)
+                        tutar_text = urun_data['Toplam Fiyat'].apply(format_money)
+                        fig_t_web = go.Figure(data=[go.Bar(
+                            x=urun_data['Rapor_Tarihi'], y=urun_data['Toplam Fiyat'],
+                            text=tutar_text, textposition='auto',
+                            marker_color=get_colors(urun_data, 'Toplam Fiyat')
+                        )])
+                        fig_t_web.update_layout(title="TOPLAM DEĞER (TL)", margin=dict(t=30, b=0, l=0, r=0), height=250)
+                        st.plotly_chart(fig_t_web, use_container_width=True, key=f"toplam_deger_grafik_{i}")
                     
                     ax_t = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=get_colors(urun_data, 'Toplam Fiyat'))
                     axes[1, i].set_title(f'TOPLAM DEĞER (TL)', fontsize=11, fontweight='bold')
