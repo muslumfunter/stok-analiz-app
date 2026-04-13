@@ -16,17 +16,12 @@ st.markdown("Ekip arkadaşlarınızla paylaşabileceğiniz interaktif sayım far
 def format_money(x):
     abs_x = abs(x)
     if abs_x >= 1_000_000:
-        return f"{x/1_000_000:.1f}M"
+        return f"{abs_x/1_000_000:.1f}M"
     elif abs_x >= 1_000:
-        return f"{x/1_000:.1f}K"
-    return f"{x:.0f}"
+        return f"{abs_x/1_000:.1f}K"
+    return f"{abs_x:.0f}"
 
 def get_colors_by_value(values):
-    """
-    Sayım Farkı mantığına göre renklendirme:
-    Pozitif değer (>0) = KAYIP = Kırmızı (#e74c3c)
-    Negatif değer (<0) = BULDUM = Yeşil (#2ecc71)
-    """
     return ['#e74c3c' if val > 0 else '#2ecc71' for val in values]
 
 def label_bars(ax, is_money=False):
@@ -39,7 +34,6 @@ def label_bars(ax, is_money=False):
                         ha='center', va='center', xytext=(0, 9), 
                         textcoords='offset points', fontsize=9, fontweight='bold')
 
-# ÜRÜN SIRALAMASI: Taşınabilir bilgisayar en sola alındı
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 
 # 3. DOSYA YÜKLEME ALANI
@@ -52,7 +46,7 @@ with st.sidebar:
 if len(uploaded_files) < 2:
     st.warning("Grafiklerin ve fark analizinin oluşabilmesi için lütfen sol menüden en az 2 adet Excel dosyası yükleyin.")
 else:
-    with st.spinner("İnteraktif Web Grafikleri Hazırlanıyor..."):
+    with st.spinner("Dinamik Grafikler ve Tablolar Hazırlanıyor..."):
         # Veri Hazırlığı
         liste = []
         for f in uploaded_files:
@@ -64,6 +58,15 @@ else:
             liste.append(df)
         
         df_master = pd.concat(liste, ignore_index=True).sort_values(by='Rapor_Tarihi')
+        
+        # BRÜT KAYIP VE BULDUM HESAPLAMALARI
+        df_master['Kayıp_Adet'] = df_master['Stokta Bulunan'].apply(lambda x: x if x > 0 else 0)
+        df_master['Buldum_Adet'] = df_master['Stokta Bulunan'].apply(lambda x: x if x < 0 else 0)
+        
+        # Tutarın yönünü adete göre garantiye alıyoruz (Aşağı/Yukarı grafik için)
+        df_master['Kayıp_Tutar'] = df_master.apply(lambda row: abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] > 0 else 0, axis=1)
+        df_master['Buldum_Tutar'] = df_master.apply(lambda row: -abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] < 0 else 0, axis=1)
+        
         son_tarih = df_master['Rapor_Tarihi'].iloc[-1]
         st.success("✅ Veriler başarıyla işlendi!")
 
@@ -76,48 +79,64 @@ else:
             
             # --- TAB 1: ANA DASHBOARD ---
             with tab1:
-                st.subheader(f"Zaman Serisi: Sayım Farkı Adetleri ve Tutar Gelişimi ({son_tarih})")
+                st.subheader(f"Zaman Serisi: Kayıp ve Buldum Dağılımı ({son_tarih})")
                 dash_df = df_master[df_master['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
-                dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi'])[['Stokta Bulunan', 'Toplam Fiyat']].sum().reset_index()
+                dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
 
-                # WEB İÇİN İNTERAKTİF GRAFİKLER (PLOTLY)
+                # ÇİFT YÖNLÜ (BIPOLAR) İNTERAKTİF GRAFİKLER
                 cols = st.columns(4)
                 for i, urun in enumerate(izlenecek_urunler):
                     urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
                     with cols[i]:
-                        # Stok Adet (Web)
-                        fig_m_web = go.Figure(data=[go.Bar(
-                            x=urun_data['Rapor_Tarihi'], y=urun_data['Stokta Bulunan'],
-                            text=urun_data['Stokta Bulunan'], textposition='auto',
-                            marker_color=get_colors_by_value(urun_data['Stokta Bulunan'])
-                        )])
-                        fig_m_web.update_layout(title=f"<b>{urun.upper()}</b><br>FARK ADET", margin=dict(t=50, b=0, l=0, r=0), height=250)
+                        # Stok Adet (Kayıp ve Buldum Aynı Barda)
+                        fig_m_web = go.Figure()
+                        kayip_txt = urun_data['Kayıp_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else "")
+                        buldum_txt = urun_data['Buldum_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else "")
+                        
+                        fig_m_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Kayıp_Adet'], name='Kayıp', marker_color='#e74c3c', text=kayip_txt, textposition='auto'))
+                        fig_m_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Buldum_Adet'], name='Buldum', marker_color='#2ecc71', text=buldum_txt, textposition='auto'))
+                        fig_m_web.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br>FARK ADET", margin=dict(t=50, b=0, l=0, r=0), height=250, showlegend=False)
                         st.plotly_chart(fig_m_web, use_container_width=True, key=f"stok_adet_grafik_{i}")
 
-                        # Toplam Değer (Web)
-                        tutar_text = urun_data['Toplam Fiyat'].apply(format_money)
-                        fig_t_web = go.Figure(data=[go.Bar(
-                            x=urun_data['Rapor_Tarihi'], y=urun_data['Toplam Fiyat'],
-                            text=tutar_text, textposition='auto',
-                            marker_color=get_colors_by_value(urun_data['Toplam Fiyat'])
-                        )])
-                        fig_t_web.update_layout(title="TOPLAM FARK DEĞERİ (TL)", margin=dict(t=30, b=0, l=0, r=0), height=250)
+                        # Toplam Değer (Kayıp ve Buldum Aynı Barda)
+                        fig_t_web = go.Figure()
+                        k_tutar_txt = urun_data['Kayıp_Tutar'].apply(lambda x: format_money(x) if x != 0 else "")
+                        b_tutar_txt = urun_data['Buldum_Tutar'].apply(lambda x: f"-{format_money(x)}" if x != 0 else "")
+                        
+                        fig_t_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Kayıp_Tutar'], name='Kayıp Tutar', marker_color='#e74c3c', text=k_tutar_txt, textposition='auto'))
+                        fig_t_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Buldum_Tutar'], name='Buldum Tutar', marker_color='#2ecc71', text=b_tutar_txt, textposition='auto'))
+                        fig_t_web.update_layout(barmode='relative', title="TOPLAM FARK DEĞERİ (TL)", margin=dict(t=30, b=0, l=0, r=0), height=250, showlegend=False)
                         st.plotly_chart(fig_t_web, use_container_width=True, key=f"toplam_deger_grafik_{i}")
 
-                # PDF İÇİN ARKA PLANDA ÇİZİM (MATPLOTLIB)
+                # TEK BİRLEŞTİRİLMİŞ ÖZET TABLOSU
+                st.markdown("---")
+                st.subheader("📋 Genel Özet Tablosu (Kayıp / Buldum / Net Dağılımı)")
+                
+                ozet_df = dash_grouped[['Rapor_Tarihi', 'Ürün Tipi', 'Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Kayıp_Tutar', 'Buldum_Tutar', 'Toplam Fiyat']].copy()
+                ozet_df.columns = ['Tarih', 'Ürün Tipi', 'Kayıp Adet (Kırmızı)', 'Buldum Adet (Yeşil)', 'Net Adet', 'Kayıp Tutar (TL)', 'Buldum Tutar (TL)', 'Net Tutar (TL)']
+                
+                st.dataframe(ozet_df.style.format({
+                    'Kayıp Adet (Kırmızı)': "{:,.0f}",
+                    'Buldum Adet (Yeşil)': "{:,.0f}",
+                    'Net Adet': "{:,.0f}",
+                    'Kayıp Tutar (TL)': "{:,.0f}",
+                    'Buldum Tutar (TL)': "{:,.0f}",
+                    'Net Tutar (TL)': "{:,.0f}"
+                }), use_container_width=True)
+
+                # PDF İÇİN ARKA PLANDA ÇİZİM (Net Değerler)
                 fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(22, 12))
                 plt.subplots_adjust(hspace=0.4, wspace=0.3)
                 for i, urun in enumerate(izlenecek_urunler):
                     urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
-                    # Matplotlib Renklendirme
                     m_colors = get_colors_by_value(urun_data['Stokta Bulunan'])
                     ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=m_colors)
-                    axes[0, i].set_title(f'{urun.upper()}\nFARK ADET', fontsize=11, fontweight='bold')
+                    axes[0, i].set_title(f'{urun.upper()}\nNET FARK ADET', fontsize=11, fontweight='bold')
                     label_bars(ax_m, is_money=False)
                     
                     t_colors = get_colors_by_value(urun_data['Toplam Fiyat'])
                     ax_t = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=t_colors)
-                    axes[1, i].set_title(f'TOPLAM FARK DEĞERİ (TL)', fontsize=11, fontweight='bold')
+                    axes[1, i].set_title(f'NET FARK DEĞERİ (TL)', fontsize=11, fontweight='bold')
                     label_bars(ax_t, is_money=True)
                 plt.suptitle(f'SAYIM FARKI DASHBOARD - {son_tarih}\n(Kırmızı: Kayıp | Yeşil: Buldum)', fontsize=22, fontweight='bold', y=0.98)
                 pdf.savefig(fig1, bbox_inches='tight')
@@ -132,7 +151,6 @@ else:
                     guncel_df = df_master[df_master['Rapor_Tarihi'] == son_tarih]
                     top_10_stok_degeri = guncel_df.groupby('Buying Category Name')['Toplam Fiyat'].sum().sort_values(ascending=False).head(10)
                     
-                    # WEB (Plotly)
                     text_guncel = [format_money(val) for val in top_10_stok_degeri.values]
                     fig2_web = go.Figure(go.Bar(
                         x=top_10_stok_degeri.values, y=top_10_stok_degeri.index, orientation='h',
@@ -142,7 +160,6 @@ else:
                     fig2_web.update_layout(yaxis={'categoryorder':'total ascending'}, height=450, margin=dict(t=0, l=0, r=0, b=0))
                     st.plotly_chart(fig2_web, use_container_width=True)
 
-                    # PDF (Matplotlib)
                     fig2, ax_top = plt.subplots(figsize=(10, 8))
                     sns.barplot(x=top_10_stok_degeri.values, y=top_10_stok_degeri.index, palette='Reds_r', ax=ax_top)
                     plt.title('GÜNCEL SAYIM AÇIĞI (TL)', fontsize=14, fontweight='bold')
@@ -156,7 +173,6 @@ else:
                     cat_pivot['Fark'] = cat_pivot.iloc[:, -1] - cat_pivot.iloc[:, 0]
                     top_10_fark = cat_pivot.sort_values(by='Fark', key=abs, ascending=False).head(10)
                     
-                    # WEB (Plotly)
                     text_fark = [format_money(val) for val in top_10_fark['Fark']]
                     fark_renkler = get_colors_by_value(top_10_fark['Fark'])
                     fig3_web = go.Figure(go.Bar(
@@ -166,7 +182,6 @@ else:
                     fig3_web.update_layout(yaxis={'categoryorder':'total ascending'}, height=450, margin=dict(t=0, l=0, r=0, b=0))
                     st.plotly_chart(fig3_web, use_container_width=True)
 
-                    # PDF (Matplotlib)
                     fig3, ax_cat = plt.subplots(figsize=(10, 8))
                     sns.barplot(x=top_10_fark['Fark'], y=top_10_fark.index, palette=fark_renkler, ax=ax_cat)
                     plt.title('FİNANSAL DEĞİŞİM (FARK - TL)', fontsize=14, fontweight='bold')
@@ -191,6 +206,7 @@ else:
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                     deep_final.to_excel(writer, sheet_name='Fark_Analizi')
                     top_10_fark.to_excel(writer, sheet_name='Kategori_Ozeti')
+                    ozet_df.to_excel(writer, sheet_name='Genel_Ozet_Tablosu', index=False) # Yeni tabloyu excele de ekledik
 
         # --- İNDİRME BUTONLARI ---
         st.markdown("---")
