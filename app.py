@@ -202,10 +202,8 @@ else:
             with tab3:
                 st.subheader("Malzeme No Bazlı Kayıp / Buldum Analizi")
                 
-                # Tüm izlenen ürünleri getiriyoruz
                 deep_df = df_master[df_master['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                 
-                # Doğrudan 'malzeme no' sütunu kullanılıyor
                 deep_pivot = deep_df.pivot_table(
                     index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], 
                     columns='Rapor_Tarihi', 
@@ -213,14 +211,22 @@ else:
                     aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}
                 ).fillna(0)
                 
+                # Varyans mantığına göre değişim hesabı
                 deep_pivot[('Analiz', 'Fark_Adet')] = deep_pivot['Stokta Bulunan'].iloc[:, -1] - deep_pivot['Stokta Bulunan'].iloc[:, 0]
-                deep_pivot[('Analiz', 'DURUM')] = deep_pivot[('Analiz', 'Fark_Adet')].apply(lambda x: "KAYIP" if x > 0 else "BULDUM")
+                deep_pivot[('Analiz', 'DURUM')] = deep_pivot[('Analiz', 'Fark_Adet')].apply(lambda x: "KAYIP" if x > 0 else ("BULDUM" if x < 0 else "SABİT"))
                 deep_pivot[('Analiz', 'Fark_Fiyat_TL')] = deep_pivot[('Analiz', 'Fark_Adet')] * deep_pivot['Birim Fiyat'].iloc[:, -1]
                 
-                # Sadece stok farkı olan hareketli kalemleri listele
-                deep_final = deep_pivot[deep_pivot[('Analiz', 'Fark_Adet')] != 0].sort_values(by=[('Analiz', 'Fark_Fiyat_TL')], ascending=False)
+                # --- YENİ FİLTRE MANTIĞI BURADA ---
+                # İki tarih arası değişimi olanları VEYA son günde hala açığı/fazlası olanları (Stokta Bulunan != 0) göster!
+                son_tarih_stok = deep_pivot['Stokta Bulunan'].iloc[:, -1]
+                degisim_farki = deep_pivot[('Analiz', 'Fark_Adet')]
                 
-                st.dataframe(deep_final.style.format({('Analiz', 'Fark_Fiyat_TL'): format_money}), use_container_width=True)
+                deep_final = deep_pivot[(son_tarih_stok != 0) | (degisim_farki != 0)].sort_values(by=[('Analiz', 'Fark_Fiyat_TL')], ascending=False)
+                
+                if deep_final.empty:
+                    st.info("💡 Seçili tarihler arasında hareket gören veya güncelde açığı bulunan bir SKU kalmamıştır.")
+                else:
+                    st.dataframe(deep_final.style.format({('Analiz', 'Fark_Fiyat_TL'): format_money}), use_container_width=True)
 
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                     deep_final.to_excel(writer, sheet_name='MalzemeNo_Fark_Analizi')
