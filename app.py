@@ -78,7 +78,7 @@ else:
             
             # --- TAB 1: ANA DASHBOARD ---
             with tab1:
-                st.subheader(f"Kritik Kateogriler Kayıp ve Buldum Dağılımı ({son_tarih})")
+                st.subheader(f"Kritik Ürün Tipleri Kayıp ve Buldum Dağılımı ({son_tarih})")
                 dash_df = df_master[df_master['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                 dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
 
