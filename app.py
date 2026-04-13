@@ -155,7 +155,7 @@ else:
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.subheader(f"Güncel Sayım Açığı En Yüksek İlk 10 Kategori")
+                    st.subheader(f"Güncel Sayım Net Fark Top 10 (Ürün Tipi)")
                     guncel_df = df_master[df_master['Rapor_Tarihi'] == son_tarih]
                     top_10_stok_degeri = guncel_df.groupby('Buying Category Name')['Toplam Fiyat'].sum().sort_values(ascending=False).head(10)
                     
