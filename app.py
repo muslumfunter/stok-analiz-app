@@ -10,7 +10,6 @@ import io
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
 
 st.title("📦 Operasyon Kalite - Sayım Farkı Dashboard")
-st.markdown("Ekip arkadaşlarınızla paylaşabileceğiniz interaktif sayım farkı, kayıp ve buldum analiz aracı.")
 
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
@@ -63,7 +62,7 @@ else:
         df_master['Kayıp_Adet'] = df_master['Stokta Bulunan'].apply(lambda x: x if x > 0 else 0)
         df_master['Buldum_Adet'] = df_master['Stokta Bulunan'].apply(lambda x: x if x < 0 else 0)
         
-        # Tutarın yönünü adete göre garantiye alıyoruz (Aşağı/Yukarı grafik için)
+        # Tutarın yönünü adete göre garantiye alıyoruz
         df_master['Kayıp_Tutar'] = df_master.apply(lambda row: abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] > 0 else 0, axis=1)
         df_master['Buldum_Tutar'] = df_master.apply(lambda row: -abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] < 0 else 0, axis=1)
         
@@ -108,21 +107,31 @@ else:
                         fig_t_web.update_layout(barmode='relative', title="TOPLAM FARK DEĞERİ (TL)", margin=dict(t=30, b=0, l=0, r=0), height=250, showlegend=False)
                         st.plotly_chart(fig_t_web, use_container_width=True, key=f"toplam_deger_grafik_{i}")
 
-                # TEK BİRLEŞTİRİLMİŞ ÖZET TABLOSU
+                # YENİ NESİL DEĞİŞİM ÖZET TABLOSU
                 st.markdown("---")
-                st.subheader("📋 Genel Özet Tablosu (Kayıp / Buldum / Net Dağılımı)")
+                st.subheader("📋 Değişim Özeti (Sadece Hareketi Olan Kategoriler)")
                 
-                ozet_df = dash_grouped[['Rapor_Tarihi', 'Ürün Tipi', 'Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Kayıp_Tutar', 'Buldum_Tutar', 'Toplam Fiyat']].copy()
-                ozet_df.columns = ['Tarih', 'Ürün Tipi', 'Kayıp Adet (Kırmızı)', 'Buldum Adet (Yeşil)', 'Net Adet', 'Kayıp Tutar (TL)', 'Buldum Tutar (TL)', 'Net Tutar (TL)']
-                
-                st.dataframe(ozet_df.style.format({
-                    'Kayıp Adet (Kırmızı)': "{:,.0f}",
-                    'Buldum Adet (Yeşil)': "{:,.0f}",
-                    'Net Adet': "{:,.0f}",
-                    'Kayıp Tutar (TL)': "{:,.0f}",
-                    'Buldum Tutar (TL)': "{:,.0f}",
-                    'Net Tutar (TL)': "{:,.0f}"
-                }), use_container_width=True)
+                ozet_pivot = dash_grouped.pivot_table(index='Ürün Tipi', columns='Rapor_Tarihi', values=['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat'], aggfunc='sum').fillna(0)
+
+                degisim_df = pd.DataFrame()
+                degisim_df['Ürün Tipi'] = ozet_pivot.index
+                degisim_df['Kayıp Değişimi (Adet)'] = (ozet_pivot['Kayıp_Adet'].iloc[:, -1] - ozet_pivot['Kayıp_Adet'].iloc[:, 0]).values
+                degisim_df['Buldum Değişimi (Adet)'] = (ozet_pivot['Buldum_Adet'].iloc[:, -1] - ozet_pivot['Buldum_Adet'].iloc[:, 0]).values
+                degisim_df['Net Adet Değişimi'] = (ozet_pivot['Stokta Bulunan'].iloc[:, -1] - ozet_pivot['Stokta Bulunan'].iloc[:, 0]).values
+                degisim_df['Net Tutar Değişimi (TL)'] = (ozet_pivot['Toplam Fiyat'].iloc[:, -1] - ozet_pivot['Toplam Fiyat'].iloc[:, 0]).values
+
+                # Sadece hareketi olanları (farkı 0 olmayanları) filtrele
+                degisim_df = degisim_df[(degisim_df['Kayıp Değişimi (Adet)'] != 0) | (degisim_df['Buldum Değişimi (Adet)'] != 0) | (degisim_df['Net Adet Değişimi'] != 0)].copy()
+
+                if degisim_df.empty:
+                    st.info("💡 Seçili tarihler arasında bu kategorilerde herhangi bir stok sayım farkı hareketi (değişim) olmamıştır.")
+                else:
+                    st.dataframe(degisim_df.style.format({
+                        'Kayıp Değişimi (Adet)': "{:,.0f}",
+                        'Buldum Değişimi (Adet)': "{:,.0f}",
+                        'Net Adet Değişimi': "{:,.0f}",
+                        'Net Tutar Değişimi (TL)': "{:,.0f}"
+                    }), use_container_width=True)
 
                 # PDF İÇİN ARKA PLANDA ÇİZİM (Net Değerler)
                 fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(22, 12))
@@ -206,7 +215,7 @@ else:
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                     deep_final.to_excel(writer, sheet_name='Fark_Analizi')
                     top_10_fark.to_excel(writer, sheet_name='Kategori_Ozeti')
-                    ozet_df.to_excel(writer, sheet_name='Genel_Ozet_Tablosu', index=False) # Yeni tabloyu excele de ekledik
+                    degisim_df.to_excel(writer, sheet_name='Genel_Degisim_Ozeti', index=False)
 
         # --- İNDİRME BUTONLARI ---
         st.markdown("---")
