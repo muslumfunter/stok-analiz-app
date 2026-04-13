@@ -34,18 +34,21 @@ def label_bars(ax, is_money=False):
                         ha='center', va='center', xytext=(0, 9), 
                         textcoords='offset points', fontsize=9, fontweight='bold')
 
-# Grafiklerde öncelikli gösterilecek ürünler
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 
 # 3. DOSYA YÜKLEME ALANI
 with st.sidebar:
     st.header("📂 Dosya Yükleme")
-    st.info("Analiz edilecek Excel raporlarını seçin (En az 2 dosya)")
+    st.info("Karşılaştırma için tam 2 adet Excel raporu seçin.")
     uploaded_files = st.file_uploader("Excel Dosyalarını Sürükleyin", type=['xlsx'], accept_multiple_files=True)
 
-# 4. ANALİZ VE DASHBOARD
-if len(uploaded_files) < 2:
-    st.warning("Grafiklerin ve fark analizinin oluşabilmesi için lütfen sol menüden en az 2 adet Excel dosyası yükleyin.")
+# 4. ANALİZ VE DASHBOARD (GÜVENLİK KURALLARI EKLENDİ)
+if len(uploaded_files) == 0:
+    st.info("👈 Lütfen sol menüden analiz edilecek 2 adet Excel dosyasını yükleyin.")
+elif len(uploaded_files) == 1:
+    st.warning("⚠️ Karşılaştırma yapabilmek için 1 adet daha Excel dosyası yüklemeniz gerekmektedir.")
+elif len(uploaded_files) > 2:
+    st.error("❌ HATA: Sisteme aynı anda en fazla 2 adet dosya yükleyebilirsiniz. Lütfen fazladan yüklediğiniz dosyaları sol menüden çarpı (X) işaretine basarak silin.")
 else:
     with st.spinner("Dinamik Grafikler ve Tablolar Hazırlanıyor..."):
         # Veri Hazırlığı
@@ -79,7 +82,7 @@ else:
             
             # --- TAB 1: ANA DASHBOARD ---
             with tab1:
-                st.subheader(f"Kritik Ürün Tipi Kayıp/Buldum Dağılımı ({son_tarih})")
+                st.subheader(f"Zaman Serisi: Kayıp ve Buldum Dağılımı ({son_tarih})")
                 dash_df = df_master[df_master['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                 dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
 
@@ -196,22 +199,14 @@ else:
                     st.info("💡 Seçili tarihler arasında hareket gören veya güncelde açığı bulunan bir SKU kalmamıştır.")
                     filtered_df = deep_final
                 else:
-                    # --- FİLTRELEME ALANI (ÜÇ KOLON) ---
                     col_f1, col_f2, col_f3 = st.columns(3)
-                    
-                    # 1. Ürün Tipi Filtresi (Yeni!)
                     mevcut_tipler = sorted(deep_final.index.get_level_values('Ürün Tipi').unique().tolist())
                     secilen_tipler = col_f1.multiselect("📊 Ürün Tipi Seçin:", options=mevcut_tipler, default=[])
-                    
-                    # 2. Durum Filtresi
                     mevcut_durumlar = deep_final[('Analiz', 'DURUM')].unique().tolist()
                     secilen_durumlar = col_f2.multiselect("📌 Durum Seçin:", options=mevcut_durumlar, default=mevcut_durumlar)
-                    
-                    # 3. Malzeme No Filtresi
                     mevcut_skular = deep_final.index.get_level_values('malzeme no').unique().tolist()
                     secilen_skular = col_f3.multiselect("🔍 Malzeme No Ara:", options=mevcut_skular)
                     
-                    # Filtreleri Uygula
                     filtered_df = deep_final.copy()
                     
                     if secilen_tipler:
