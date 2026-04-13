@@ -21,16 +21,13 @@ def format_money(x):
         return f"{x/1_000:.1f}K"
     return f"{x:.0f}"
 
-def get_colors(data, column):
-    colors = ['#95a5a6'] 
-    values = data[column].tolist()
-    for i in range(1, len(values)):
-        # Değer pozitif yöne gidiyorsa (Kayıp artıyor) -> Kırmızı
-        if values[i] > values[i-1]: colors.append('#e74c3c') 
-        # Değer negatif yöne gidiyorsa (Buldum artıyor / Açık kapanıyor) -> Yeşil
-        elif values[i] < values[i-1]: colors.append('#2ecc71') 
-        else: colors.append('#95a5a6')
-    return colors
+def get_colors_by_value(values):
+    """
+    Sayım Farkı mantığına göre renklendirme:
+    Pozitif değer (>0) = KAYIP = Kırmızı (#e74c3c)
+    Negatif değer (<0) = BULDUM = Yeşil (#2ecc71)
+    """
+    return ['#e74c3c' if val > 0 else '#2ecc71' for val in values]
 
 def label_bars(ax, is_money=False):
     for p in ax.patches:
@@ -42,7 +39,8 @@ def label_bars(ax, is_money=False):
                         ha='center', va='center', xytext=(0, 9), 
                         textcoords='offset points', fontsize=9, fontweight='bold')
 
-izlenecek_urunler = ['cep telefonu', 'taşınabilir bilgisayar', 'tabletler', 'IPL cihazları']
+# ÜRÜN SIRALAMASI: Taşınabilir bilgisayar en sola alındı
+izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 
 # 3. DOSYA YÜKLEME ALANI
 with st.sidebar:
@@ -91,7 +89,7 @@ else:
                         fig_m_web = go.Figure(data=[go.Bar(
                             x=urun_data['Rapor_Tarihi'], y=urun_data['Stokta Bulunan'],
                             text=urun_data['Stokta Bulunan'], textposition='auto',
-                            marker_color=get_colors(urun_data, 'Stokta Bulunan')
+                            marker_color=get_colors_by_value(urun_data['Stokta Bulunan'])
                         )])
                         fig_m_web.update_layout(title=f"<b>{urun.upper()}</b><br>FARK ADET", margin=dict(t=50, b=0, l=0, r=0), height=250)
                         st.plotly_chart(fig_m_web, use_container_width=True, key=f"stok_adet_grafik_{i}")
@@ -101,7 +99,7 @@ else:
                         fig_t_web = go.Figure(data=[go.Bar(
                             x=urun_data['Rapor_Tarihi'], y=urun_data['Toplam Fiyat'],
                             text=tutar_text, textposition='auto',
-                            marker_color=get_colors(urun_data, 'Toplam Fiyat')
+                            marker_color=get_colors_by_value(urun_data['Toplam Fiyat'])
                         )])
                         fig_t_web.update_layout(title="TOPLAM FARK DEĞERİ (TL)", margin=dict(t=30, b=0, l=0, r=0), height=250)
                         st.plotly_chart(fig_t_web, use_container_width=True, key=f"toplam_deger_grafik_{i}")
@@ -111,11 +109,14 @@ else:
                 plt.subplots_adjust(hspace=0.4, wspace=0.3)
                 for i, urun in enumerate(izlenecek_urunler):
                     urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
-                    ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=get_colors(urun_data, 'Stokta Bulunan'))
+                    # Matplotlib Renklendirme
+                    m_colors = get_colors_by_value(urun_data['Stokta Bulunan'])
+                    ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=m_colors)
                     axes[0, i].set_title(f'{urun.upper()}\nFARK ADET', fontsize=11, fontweight='bold')
                     label_bars(ax_m, is_money=False)
                     
-                    ax_t = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=get_colors(urun_data, 'Toplam Fiyat'))
+                    t_colors = get_colors_by_value(urun_data['Toplam Fiyat'])
+                    ax_t = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=t_colors)
                     axes[1, i].set_title(f'TOPLAM FARK DEĞERİ (TL)', fontsize=11, fontweight='bold')
                     label_bars(ax_t, is_money=True)
                 plt.suptitle(f'SAYIM FARKI DASHBOARD - {son_tarih}\n(Kırmızı: Kayıp | Yeşil: Buldum)', fontsize=22, fontweight='bold', y=0.98)
@@ -157,8 +158,7 @@ else:
                     
                     # WEB (Plotly)
                     text_fark = [format_money(val) for val in top_10_fark['Fark']]
-                    # Kırmızı: Kayıp (>0), Yeşil: Buldum (<0)
-                    fark_renkler = ['#e74c3c' if x > 0 else '#2ecc71' for x in top_10_fark['Fark']]
+                    fark_renkler = get_colors_by_value(top_10_fark['Fark'])
                     fig3_web = go.Figure(go.Bar(
                         x=top_10_fark['Fark'], y=top_10_fark.index, orientation='h',
                         text=text_fark, textposition='auto', marker_color=fark_renkler
@@ -181,7 +181,6 @@ else:
                 deep_df = df_master[df_master['Buying Category Name'].isin(top_10_isimler)]
                 deep_pivot = deep_df.pivot_table(index=['Buying Category Name', 'Ürün Tipi', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values=['Stokta Bulunan', 'Birim Fiyat'], aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}).fillna(0)
                 
-                # Varyans mantığına göre değişim (Pozitif = Kayıp, Negatif = Buldum)
                 deep_pivot[('Analiz', 'Fark_Adet')] = deep_pivot['Stokta Bulunan'].iloc[:, -1] - deep_pivot['Stokta Bulunan'].iloc[:, 0]
                 deep_pivot[('Analiz', 'DURUM')] = deep_pivot[('Analiz', 'Fark_Adet')].apply(lambda x: "KAYIP" if x > 0 else "BULDUM")
                 deep_pivot[('Analiz', 'Fark_Fiyat_TL')] = deep_pivot[('Analiz', 'Fark_Adet')] * deep_pivot['Birim Fiyat'].iloc[:, -1]
