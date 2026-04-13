@@ -101,7 +101,7 @@ else:
                             text=tutar_text, textposition='auto',
                             marker_color=get_colors(urun_data, 'Toplam Fiyat')
                         )])
-                      fig_m_web.update_layout(title=f"<b>{urun.upper()}</b><br>STOK ADET", margin=dict(t=50, b=0, l=0, r=0), height=250)
+                     fig_m_web.update_layout(title=f"<b>{urun.upper()}</b><br>STOK ADET", margin=dict(t=50, b=0, l=0, r=0), height=250)
                         st.plotly_chart(fig_m_web, use_container_width=True, key=f"stok_adet_grafik_{i}")
 
                         # Toplam Değer (Web)
