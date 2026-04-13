@@ -10,6 +10,7 @@ import io
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
 
 st.title("📦 Operasyon Kalite - Sayım Farkı Dashboard")
+st.markdown("Ekip arkadaşlarınızla paylaşabileceğiniz interaktif sayım farkı, kayıp ve buldum analiz aracı.")
 
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
@@ -69,7 +70,7 @@ else:
         son_tarih = df_master['Rapor_Tarihi'].iloc[-1]
         st.success("✅ Veriler başarıyla işlendi!")
 
-        tab1, tab2, tab3 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🔍 Dive Deep (Kayıp/Buldum)"])
+        tab1, tab2, tab3 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🔍 Dive Deep (SKU Bazlı)"])
 
         pdf_buffer = io.BytesIO()
         excel_buffer = io.BytesIO()
@@ -87,7 +88,7 @@ else:
                 for i, urun in enumerate(izlenecek_urunler):
                     urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
                     with cols[i]:
-                        # Stok Adet (Kayıp ve Buldum Aynı Barda)
+                        # Stok Adet
                         fig_m_web = go.Figure()
                         kayip_txt = urun_data['Kayıp_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else "")
                         buldum_txt = urun_data['Buldum_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else "")
@@ -97,7 +98,7 @@ else:
                         fig_m_web.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br>FARK ADET", margin=dict(t=50, b=0, l=0, r=0), height=250, showlegend=False)
                         st.plotly_chart(fig_m_web, use_container_width=True, key=f"stok_adet_grafik_{i}")
 
-                        # Toplam Değer (Kayıp ve Buldum Aynı Barda)
+                        # Toplam Değer
                         fig_t_web = go.Figure()
                         k_tutar_txt = urun_data['Kayıp_Tutar'].apply(lambda x: format_money(x) if x != 0 else "")
                         b_tutar_txt = urun_data['Buldum_Tutar'].apply(lambda x: f"-{format_money(x)}" if x != 0 else "")
@@ -120,7 +121,6 @@ else:
                 degisim_df['Net Adet Değişimi'] = (ozet_pivot['Stokta Bulunan'].iloc[:, -1] - ozet_pivot['Stokta Bulunan'].iloc[:, 0]).values
                 degisim_df['Net Tutar Değişimi (TL)'] = (ozet_pivot['Toplam Fiyat'].iloc[:, -1] - ozet_pivot['Toplam Fiyat'].iloc[:, 0]).values
 
-                # Sadece hareketi olanları (farkı 0 olmayanları) filtrele
                 degisim_df = degisim_df[(degisim_df['Kayıp Değişimi (Adet)'] != 0) | (degisim_df['Buldum Değişimi (Adet)'] != 0) | (degisim_df['Net Adet Değişimi'] != 0)].copy()
 
                 if degisim_df.empty:
@@ -198,22 +198,34 @@ else:
                     pdf.savefig(fig3, bbox_inches='tight')
                     plt.close(fig3)
 
-            # --- TAB 3: DIVE DEEP ---
+            # --- TAB 3: DIVE DEEP (SKU BAZLI) ---
             with tab3:
-                st.subheader("Malzeme Bazlı Kayıp / Buldum Analizi")
-                top_10_isimler = top_10_fark.index.tolist()
-                deep_df = df_master[df_master['Buying Category Name'].isin(top_10_isimler)]
-                deep_pivot = deep_df.pivot_table(index=['Buying Category Name', 'Ürün Tipi', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values=['Stokta Bulunan', 'Birim Fiyat'], aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}).fillna(0)
+                st.subheader("Malzeme (SKU) Bazlı Kayıp / Buldum Analizi")
+                
+                # Tüm izlenen ürünleri getiriyoruz (Category kısıtlaması kalktı)
+                deep_df = df_master[df_master['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
+                
+                # Excel'deki SKU sütununun adı 'SKU' mu yoksa 'malzeme no' mu? Dinamik yakalama:
+                sku_col = 'SKU' if 'SKU' in deep_df.columns else 'malzeme no'
+                
+                deep_pivot = deep_df.pivot_table(
+                    index=['Ürün Tipi', sku_col, 'Malzeme Tanımı'], 
+                    columns='Rapor_Tarihi', 
+                    values=['Stokta Bulunan', 'Birim Fiyat'], 
+                    aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}
+                ).fillna(0)
                 
                 deep_pivot[('Analiz', 'Fark_Adet')] = deep_pivot['Stokta Bulunan'].iloc[:, -1] - deep_pivot['Stokta Bulunan'].iloc[:, 0]
                 deep_pivot[('Analiz', 'DURUM')] = deep_pivot[('Analiz', 'Fark_Adet')].apply(lambda x: "KAYIP" if x > 0 else "BULDUM")
                 deep_pivot[('Analiz', 'Fark_Fiyat_TL')] = deep_pivot[('Analiz', 'Fark_Adet')] * deep_pivot['Birim Fiyat'].iloc[:, -1]
+                
+                # Sadece stok farkı olan hareketli SKU'ları listele
                 deep_final = deep_pivot[deep_pivot[('Analiz', 'Fark_Adet')] != 0].sort_values(by=[('Analiz', 'Fark_Fiyat_TL')], ascending=False)
                 
                 st.dataframe(deep_final.style.format({('Analiz', 'Fark_Fiyat_TL'): format_money}), use_container_width=True)
 
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                    deep_final.to_excel(writer, sheet_name='Fark_Analizi')
+                    deep_final.to_excel(writer, sheet_name='SKU_Fark_Analizi')
                     top_10_fark.to_excel(writer, sheet_name='Kategori_Ozeti')
                     degisim_df.to_excel(writer, sheet_name='Genel_Degisim_Ozeti', index=False)
 
