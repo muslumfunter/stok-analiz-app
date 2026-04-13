@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.backends.backend_pdf import PdfPages
+import plotly.graph_objects as go
 import io
 
 # 1. SAYFA AYARLARI (Geniş Ekran Modu)
@@ -41,35 +42,31 @@ def label_bars(ax, is_money=False):
 
 izlenecek_urunler = ['cep telefonu', 'taşınabilir bilgisayar', 'tabletler', 'IPL cihazları']
 
-# 3. DOSYA YÜKLEME ALANI (Kenar Çubuğu)
+# 3. DOSYA YÜKLEME ALANI
 with st.sidebar:
     st.header("📂 Dosya Yükleme")
     st.info("Analiz edilecek Excel raporlarını seçin (En az 2 dosya)")
     uploaded_files = st.file_uploader("Excel Dosyalarını Sürükleyin", type=['xlsx'], accept_multiple_files=True)
 
-# 4. ANALİZ VE DASHBOARD ÇİZİMİ
+# 4. ANALİZ VE DASHBOARD
 if len(uploaded_files) < 2:
     st.warning("Grafiklerin ve fark analizinin oluşabilmesi için lütfen sol menüden en az 2 adet Excel dosyası yükleyin.")
 else:
-    with st.spinner("Veriler işleniyor ve Dashboard hazırlanıyor..."):
-        # Verileri Birleştirme
+    with st.spinner("İnteraktif Web Grafikleri Hazırlanıyor..."):
+        # Veri Hazırlığı
         liste = []
         for f in uploaded_files:
             df = pd.read_excel(f, header=0)
             df.columns = df.columns.str.strip()
-            
             dosya_adi = f.name.replace(".xlsx", "")
             kisa_tarih = f"{dosya_adi[:2]}/{dosya_adi[2:4]}"
             df['Rapor_Tarihi'] = kisa_tarih
             liste.append(df)
         
-        df_master = pd.concat(liste, ignore_index=True)
-        df_master = df_master.sort_values(by='Rapor_Tarihi')
+        df_master = pd.concat(liste, ignore_index=True).sort_values(by='Rapor_Tarihi')
         son_tarih = df_master['Rapor_Tarihi'].iloc[-1]
+        st.success("✅ Veriler başarıyla işlendi!")
 
-        st.success("✅ Veriler başarıyla yüklendi!")
-
-        # --- SEKME (TAB) YAPISI ---
         tab1, tab2, tab3 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🔍 Dive Deep (Kayıp/Artış)"])
 
         pdf_buffer = io.BytesIO()
@@ -83,12 +80,35 @@ else:
                 dash_df = df_master[df_master['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                 dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi'])[['Stokta Bulunan', 'Toplam Fiyat']].sum().reset_index()
 
-                fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(22, 12))
-                plt.subplots_adjust(hspace=0.4, wspace=0.3)
-                
+                # WEB İÇİN İNTERAKTİF GRAFİKLER (PLOTLY)
+                cols = st.columns(4)
                 for i, urun in enumerate(izlenecek_urunler):
                     urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
-                    
+                    with cols[i]:
+                        # Stok Adet (Web)
+                        fig_m_web = go.Figure(data=[go.Bar(
+                            x=urun_data['Rapor_Tarihi'], y=urun_data['Stokta Bulunan'],
+                            text=urun_data['Stokta Bulunan'], textposition='auto',
+                            marker_color=get_colors(urun_data, 'Stokta Bulunan')
+                        )])
+                        fig_m_web.update_layout(title=f"<b>{urun.upper()}</b><br>STOK ADET", margin=dict(t=50, b=0, l=0, r=0), height=250)
+                        st.plotly_chart(fig_m_web, use_container_width=True)
+
+                        # Toplam Değer (Web)
+                        tutar_text = urun_data['Toplam Fiyat'].apply(format_money)
+                        fig_t_web = go.Figure(data=[go.Bar(
+                            x=urun_data['Rapor_Tarihi'], y=urun_data['Toplam Fiyat'],
+                            text=tutar_text, textposition='auto',
+                            marker_color=get_colors(urun_data, 'Toplam Fiyat')
+                        )])
+                        fig_t_web.update_layout(title="TOPLAM DEĞER (TL)", margin=dict(t=30, b=0, l=0, r=0), height=250)
+                        st.plotly_chart(fig_t_web, use_container_width=True)
+
+                # PDF İÇİN ARKA PLANDA ÇİZİM (MATPLOTLIB)
+                fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(22, 12))
+                plt.subplots_adjust(hspace=0.4, wspace=0.3)
+                for i, urun in enumerate(izlenecek_urunler):
+                    urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
                     ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=get_colors(urun_data, 'Stokta Bulunan'))
                     axes[0, i].set_title(f'{urun.upper()}\nSTOK ADET', fontsize=11, fontweight='bold')
                     label_bars(ax_m, is_money=False)
@@ -96,10 +116,9 @@ else:
                     ax_t = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=get_colors(urun_data, 'Toplam Fiyat'))
                     axes[1, i].set_title(f'TOPLAM DEĞER (TL)', fontsize=11, fontweight='bold')
                     label_bars(ax_t, is_money=True)
-                
-                plt.suptitle(f'STOK ANALİZ DASHBOARD (Kırmızı: Artış | Yeşil: Azalış)', fontsize=22, fontweight='bold', y=0.98)
-                st.pyplot(fig1)
+                plt.suptitle(f'STOK ANALİZ DASHBOARD - {son_tarih}', fontsize=22, fontweight='bold', y=0.98)
                 pdf.savefig(fig1, bbox_inches='tight')
+                plt.close(fig1)
 
             # --- TAB 2: KATEGORİ DETAYI ---
             with tab2:
@@ -110,12 +129,23 @@ else:
                     guncel_df = df_master[df_master['Rapor_Tarihi'] == son_tarih]
                     top_10_stok_degeri = guncel_df.groupby('Buying Category Name')['Toplam Fiyat'].sum().sort_values(ascending=False).head(10)
                     
+                    # WEB (Plotly)
+                    text_guncel = [format_money(val) for val in top_10_stok_degeri.values]
+                    fig2_web = go.Figure(go.Bar(
+                        x=top_10_stok_degeri.values, y=top_10_stok_degeri.index, orientation='h',
+                        text=text_guncel, textposition='auto',
+                        marker=dict(color=top_10_stok_degeri.values, colorscale='Blues', reversescale=False)
+                    ))
+                    fig2_web.update_layout(yaxis={'categoryorder':'total ascending'}, height=450, margin=dict(t=0, l=0, r=0, b=0))
+                    st.plotly_chart(fig2_web, use_container_width=True)
+
+                    # PDF (Matplotlib)
                     fig2, ax_top = plt.subplots(figsize=(10, 8))
                     sns.barplot(x=top_10_stok_degeri.values, y=top_10_stok_degeri.index, palette='Blues_r', ax=ax_top)
                     plt.title('GÜNCEL STOK DEĞERİ (TL)', fontsize=14, fontweight='bold')
                     label_bars(ax_top, is_money=True)
-                    st.pyplot(fig2)
                     pdf.savefig(fig2, bbox_inches='tight')
+                    plt.close(fig2)
 
                 with col2:
                     st.subheader("Kategori Bazlı Finansal Değişim (İlk vs Son Rapor)")
@@ -123,13 +153,23 @@ else:
                     cat_pivot['Fark'] = cat_pivot.iloc[:, -1] - cat_pivot.iloc[:, 0]
                     top_10_fark = cat_pivot.sort_values(by='Fark', key=abs, ascending=False).head(10)
                     
+                    # WEB (Plotly)
+                    text_fark = [format_money(val) for val in top_10_fark['Fark']]
+                    fark_renkler = ['#e74c3c' if x > 0 else '#2ecc71' for x in top_10_fark['Fark']]
+                    fig3_web = go.Figure(go.Bar(
+                        x=top_10_fark['Fark'], y=top_10_fark.index, orientation='h',
+                        text=text_fark, textposition='auto', marker_color=fark_renkler
+                    ))
+                    fig3_web.update_layout(yaxis={'categoryorder':'total ascending'}, height=450, margin=dict(t=0, l=0, r=0, b=0))
+                    st.plotly_chart(fig3_web, use_container_width=True)
+
+                    # PDF (Matplotlib)
                     fig3, ax_cat = plt.subplots(figsize=(10, 8))
-                    cat_colors = ['#e74c3c' if x > 0 else '#2ecc71' for x in top_10_fark['Fark']]
-                    sns.barplot(x=top_10_fark['Fark'], y=top_10_fark.index, palette=cat_colors, ax=ax_cat)
+                    sns.barplot(x=top_10_fark['Fark'], y=top_10_fark.index, palette=fark_renkler, ax=ax_cat)
                     plt.title('FİNANSAL DEĞİŞİM (FARK - TL)', fontsize=14, fontweight='bold')
                     plt.axvline(0, color='black', linewidth=1)
-                    st.pyplot(fig3)
                     pdf.savefig(fig3, bbox_inches='tight')
+                    plt.close(fig3)
 
             # --- TAB 3: DIVE DEEP ---
             with tab3:
@@ -153,21 +193,7 @@ else:
         st.markdown("---")
         st.header("📥 Raporları İndir")
         col_pdf, col_excel = st.columns(2)
-        
         with col_pdf:
-            st.download_button(
-                label="📄 PDF Raporunu İndir (Yatay Dashboard)",
-                data=pdf_buffer.getvalue(),
-                file_name=f"Stok_Dashboard_Yatay_{son_tarih.replace('/', '')}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-            
+            st.download_button("📄 PDF Raporunu İndir", data=pdf_buffer.getvalue(), file_name=f"Stok_Dashboard_Yatay_{son_tarih.replace('/', '')}.pdf", mime="application/pdf", use_container_width=True)
         with col_excel:
-            st.download_button(
-                label="📊 Excel Dive Deep Raporunu İndir",
-                data=excel_buffer.getvalue(),
-                file_name=f"Stok_Dive_Deep_{son_tarih.replace('/', '')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+            st.download_button("📊 Excel Dive Deep İndir", data=excel_buffer.getvalue(), file_name=f"Stok_Dive_Deep_{son_tarih.replace('/', '')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
