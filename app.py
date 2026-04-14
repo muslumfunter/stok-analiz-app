@@ -143,7 +143,7 @@ else:
                 pdf.savefig(fig1, bbox_inches='tight')
                 plt.close(fig1)
 
-            # --- TAB 2: KATEGORİ DETAYI ---
+            # --- TAB 2: KATEGORİ DETAYI (ŞELALE SIRALAMASI DÜZELTİLDİ) ---
             with tab2:
                 col1, col2 = st.columns(2)
                 with col1:
@@ -167,8 +167,14 @@ else:
                     cat_pivot = df_master.pivot_table(index='Buying Category Name', columns='Rapor_Tarihi', values='Toplam Fiyat', aggfunc='sum').fillna(0)
                     cat_pivot['Fark'] = cat_pivot.iloc[:, -1] - cat_pivot.iloc[:, 0]
                     
+                    # 1. En büyük değişimi olan 10 kategoriyi çekiyoruz
                     top_10_fark = cat_pivot.sort_values(by='Fark', key=abs, ascending=False).head(10)
-                    top_10_fark = top_10_fark.sort_values(by='Fark', ascending=True)
+                    
+                    # 2. ŞELALE SIRALAMASI: Yukarıdan aşağıya (Büyük Artı -> Küçük Artı -> Büyük Eksi -> Küçük Eksi)
+                    # Plotly aşağıdan yukarı çizdiği için Dataframe'i tam tersi dizeceğiz:
+                    pos_df = top_10_fark[top_10_fark['Fark'] > 0].sort_values(by='Fark', ascending=True)
+                    neg_df = top_10_fark[top_10_fark['Fark'] <= 0].sort_values(by='Fark', ascending=False)
+                    top_10_fark = pd.concat([neg_df, pos_df])
                     
                     text_fark = [format_money(val) for val in top_10_fark['Fark']]
                     fark_renkler = get_colors_by_value(top_10_fark['Fark'])
@@ -212,7 +218,6 @@ else:
                     secilen_tipler = col_f1.multiselect("📊 Ürün Tipi Seçin:", options=mevcut_tipler, default=[])
                     
                     mevcut_durumlar = deep_final[('Analiz', 'DURUM')].unique().tolist()
-                    # SABİT hariç sadece KAYIP ve BULDUM varsayılan olarak seçili gelir
                     varsayilan_durumlar = [d for d in mevcut_durumlar if d in ['KAYIP', 'BULDUM']]
                     secilen_durumlar = col_f2.multiselect("📌 Durum Seçin:", options=mevcut_durumlar, default=varsayilan_durumlar)
                     
