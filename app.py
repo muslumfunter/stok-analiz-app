@@ -10,7 +10,6 @@ import io
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
 
 st.title("📦 Operasyon Kalite - Sayım Farkı Dashboard")
-st.markdown("Ekip arkadaşlarınızla paylaşabileceğiniz interaktif sayım farkı, kayıp ve buldum analiz aracı.")
 
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
