@@ -13,12 +13,18 @@ st.title("📦 Operasyon Kalite - Sayım Farkı Dashboard")
 
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
-    abs_x = abs(x)
-    if abs_x >= 1_000_000:
-        return f"{abs_x/1_000_000:.1f}M"
-    elif abs_x >= 1_000:
-        return f"{abs_x/1_000:.1f}K"
-    return f"{abs_x:.0f}"
+    try:
+        val = float(x)
+        is_negative = val < 0
+        abs_x = abs(val)
+        sign = "-" if is_negative else ""
+        if abs_x >= 1_000_000:
+            return f"{sign}{abs_x/1_000_000:.1f}M"
+        elif abs_x >= 1_000:
+            return f"{sign}{abs_x/1_000:.1f}K"
+        return f"{sign}{abs_x:.0f}"
+    except:
+        return str(x)
 
 def get_colors_by_value(values):
     return ['#e74c3c' if val > 0 else '#2ecc71' for val in values]
@@ -98,7 +104,7 @@ else:
 
                         fig_t_web = go.Figure()
                         k_tutar_txt = urun_data['Kayıp_Tutar'].apply(lambda x: format_money(x) if x != 0 else "")
-                        b_tutar_txt = urun_data['Buldum_Tutar'].apply(lambda x: f"-{format_money(x)}" if x != 0 else "")
+                        b_tutar_txt = urun_data['Buldum_Tutar'].apply(lambda x: format_money(x) if x != 0 else "")
                         
                         fig_t_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Kayıp_Tutar'], name='Kayıp Tutar', marker_color='#e74c3c', text=k_tutar_txt, textposition='auto'))
                         fig_t_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Buldum_Tutar'], name='Buldum Tutar', marker_color='#2ecc71', text=b_tutar_txt, textposition='auto'))
@@ -170,7 +176,6 @@ else:
                     top_10_fark = cat_pivot.sort_values(by='Fark', key=abs, ascending=False).head(10)
                     
                     # 2. ŞELALE SIRALAMASI: Yukarıdan aşağıya (Büyük Artı -> Küçük Artı -> Büyük Eksi -> Küçük Eksi)
-                    # Plotly aşağıdan yukarı çizdiği için Dataframe'i tam tersi dizeceğiz:
                     pos_df = top_10_fark[top_10_fark['Fark'] > 0].sort_values(by='Fark', ascending=True)
                     neg_df = top_10_fark[top_10_fark['Fark'] <= 0].sort_values(by='Fark', ascending=False)
                     top_10_fark = pd.concat([neg_df, pos_df])
@@ -189,7 +194,7 @@ else:
                     pdf.savefig(fig3, bbox_inches='tight')
                     plt.close(fig3)
 
-            # --- TAB 3: DIVE DEEP (RENKLİ VE FİLTRELİ) ---
+            # --- TAB 3: DIVE DEEP (DİP TOPLAM EKLENDİ) ---
             with tab3:
                 st.subheader("Tüm Depo - Malzeme No (SKU) Bazlı Analiz")
                 deep_df = df_master.copy()
@@ -197,7 +202,6 @@ else:
                 
                 deep_pivot[('Analiz', 'Fark_Adet')] = deep_pivot['Stokta Bulunan'].iloc[:, -1] - deep_pivot['Stokta Bulunan'].iloc[:, 0]
                 
-                # --- GÜNCEL EŞİTLENDİ MANTIĞI EKLENDİ ---
                 def belirle_durum(row):
                     if row['Stokta Bulunan'].iloc[-1] == 0:
                         return "EŞİTLENDİ"
@@ -222,7 +226,7 @@ else:
                 
                 if deep_final.empty:
                     st.info("💡 Seçili tarihler arasında hareket gören veya güncelde açığı bulunan bir SKU kalmamıştır.")
-                    filtered_df = deep_final
+                    filtered_df_with_total = deep_final
                 else:
                     col_f1, col_f2, col_f3 = st.columns(3)
                     
@@ -230,7 +234,6 @@ else:
                     secilen_tipler = col_f1.multiselect("📊 Ürün Tipi Seçin:", options=mevcut_tipler, default=[])
                     
                     mevcut_durumlar = deep_final[('Analiz', 'DURUM')].unique().tolist()
-                    # EŞİTLENDİ filtresi de varsayılana eklendi
                     varsayilan_durumlar = [d for d in mevcut_durumlar if d in ['KAYIP', 'BULDUM', 'EŞİTLENDİ']]
                     secilen_durumlar = col_f2.multiselect("📌 Durum Seçin:", options=mevcut_durumlar, default=varsayilan_durumlar)
                     
@@ -252,8 +255,33 @@ else:
                     max_kayip = filtered_df[('Analiz', 'Fark_Fiyat_TL')].max() if not filtered_df.empty else 0
                     min_buldum = filtered_df[('Analiz', 'Fark_Fiyat_TL')].min() if not filtered_df.empty else 0
 
+                    # --- DİP TOPLAM (GRAND TOTAL) SATIRI ---
+                    if not filtered_df.empty:
+                        t1_sum = filtered_df[('Stokta Bulunan', tarih1)].sum()
+                        t2_sum = filtered_df[('Stokta Bulunan', tarih2)].sum()
+                        fark_adet_sum = filtered_df[('Analiz', 'Fark_Adet')].sum()
+                        fark_tl_sum = filtered_df[('Analiz', 'Fark_Fiyat_TL')].sum()
+
+                        total_idx = pd.MultiIndex.from_tuples([('GENEL TOPLAM', '-', '-')], names=filtered_df.index.names)
+                        total_row = pd.DataFrame(index=total_idx, columns=filtered_df.columns)
+                        
+                        total_row[('Stokta Bulunan', tarih1)] = t1_sum
+                        total_row[('Stokta Bulunan', tarih2)] = t2_sum
+                        total_row[('Analiz', 'Fark_Adet')] = fark_adet_sum
+                        total_row[('Analiz', 'DURUM')] = "" 
+                        total_row[('Analiz', 'Fark_Fiyat_TL')] = fark_tl_sum
+
+                        filtered_df_with_total = pd.concat([filtered_df, total_row])
+                    else:
+                        filtered_df_with_total = filtered_df
+
                     def akilli_renklendirme(row):
                         styles = []
+                        
+                        # Eğer bu satır Genel Toplam satırıysa komple farklı ve belirgin bir stil uygula
+                        if row.name[0] == 'GENEL TOPLAM':
+                            return ['background-color: #f39c12; color: #2c3e50; font-weight: bold; font-size: 14px;' for _ in row.index]
+
                         fark = row[('Analiz', 'Fark_Fiyat_TL')]
                         durum = row[('Analiz', 'DURUM')]
                         
@@ -264,7 +292,6 @@ else:
                                 styles.append('background-color: rgba(255, 255, 255, 0.12); color: #ffffff; font-weight: bold;') 
                             elif col[0] == 'Analiz':
                                 if durum == 'EŞİTLENDİ':
-                                    # Eşitlenenler için tatlı, yumuşak bir mavi tonu
                                     styles.append('background-color: rgba(52, 152, 219, 0.25); color: #ecf0f1;')
                                 elif fark > 0 and max_kayip > 0:
                                     intensity = fark / max_kayip
@@ -280,7 +307,7 @@ else:
                                 styles.append('') 
                         return styles
 
-                    styled_df = filtered_df.style.apply(akilli_renklendirme, axis=1).format({
+                    styled_df = filtered_df_with_total.style.apply(akilli_renklendirme, axis=1).format({
                         ('Stokta Bulunan', tarih1): "{:.0f}",  
                         ('Stokta Bulunan', tarih2): "{:.0f}",  
                         ('Analiz', 'Fark_Adet'): "{:.0f}",
@@ -290,7 +317,8 @@ else:
                     st.dataframe(styled_df, use_container_width=True)
 
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                    filtered_df.to_excel(writer, sheet_name='Filtreli_Analiz')
+                    if not deep_final.empty:
+                        filtered_df_with_total.to_excel(writer, sheet_name='Filtreli_Analiz')
                     top_10_fark.to_excel(writer, sheet_name='Kategori_Ozeti')
                     degisim_df.to_excel(writer, sheet_name='Genel_Degisim_Ozeti', index=False)
 
