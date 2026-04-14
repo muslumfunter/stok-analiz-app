@@ -196,7 +196,20 @@ else:
                 deep_pivot = deep_df.pivot_table(index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values=['Stokta Bulunan', 'Birim Fiyat'], aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}).fillna(0)
                 
                 deep_pivot[('Analiz', 'Fark_Adet')] = deep_pivot['Stokta Bulunan'].iloc[:, -1] - deep_pivot['Stokta Bulunan'].iloc[:, 0]
-                deep_pivot[('Analiz', 'DURUM')] = deep_pivot[('Analiz', 'Fark_Adet')].apply(lambda x: "KAYIP" if x > 0 else ("BULDUM" if x < 0 else "SABİT"))
+                
+                # --- GÜNCEL EŞİTLENDİ MANTIĞI EKLENDİ ---
+                def belirle_durum(row):
+                    if row['Stokta Bulunan'].iloc[-1] == 0:
+                        return "EŞİTLENDİ"
+                    elif row[('Analiz', 'Fark_Adet')] > 0:
+                        return "KAYIP"
+                    elif row[('Analiz', 'Fark_Adet')] < 0:
+                        return "BULDUM"
+                    else:
+                        return "SABİT"
+                        
+                deep_pivot[('Analiz', 'DURUM')] = deep_pivot.apply(belirle_durum, axis=1)
+                
                 gecerli_fiyat = deep_pivot['Birim Fiyat'].max(axis=1)
                 deep_pivot[('Analiz', 'Fark_Fiyat_TL')] = deep_pivot[('Analiz', 'Fark_Adet')] * gecerli_fiyat
                 
@@ -217,7 +230,8 @@ else:
                     secilen_tipler = col_f1.multiselect("📊 Ürün Tipi Seçin:", options=mevcut_tipler, default=[])
                     
                     mevcut_durumlar = deep_final[('Analiz', 'DURUM')].unique().tolist()
-                    varsayilan_durumlar = [d for d in mevcut_durumlar if d in ['KAYIP', 'BULDUM']]
+                    # EŞİTLENDİ filtresi de varsayılana eklendi
+                    varsayilan_durumlar = [d for d in mevcut_durumlar if d in ['KAYIP', 'BULDUM', 'EŞİTLENDİ']]
                     secilen_durumlar = col_f2.multiselect("📌 Durum Seçin:", options=mevcut_durumlar, default=varsayilan_durumlar)
                     
                     mevcut_skular = deep_final.index.get_level_values('malzeme no').unique().tolist()
@@ -241,6 +255,7 @@ else:
                     def akilli_renklendirme(row):
                         styles = []
                         fark = row[('Analiz', 'Fark_Fiyat_TL')]
+                        durum = row[('Analiz', 'DURUM')]
                         
                         for col in row.index:
                             if col[0] == 'Stokta Bulunan' and col[1] == tarih1:
@@ -248,7 +263,10 @@ else:
                             elif col[0] == 'Stokta Bulunan' and col[1] == tarih2:
                                 styles.append('background-color: rgba(255, 255, 255, 0.12); color: #ffffff; font-weight: bold;') 
                             elif col[0] == 'Analiz':
-                                if fark > 0 and max_kayip > 0:
+                                if durum == 'EŞİTLENDİ':
+                                    # Eşitlenenler için tatlı, yumuşak bir mavi tonu
+                                    styles.append('background-color: rgba(52, 152, 219, 0.25); color: #ecf0f1;')
+                                elif fark > 0 and max_kayip > 0:
                                     intensity = fark / max_kayip
                                     alpha = 0.15 + (0.6 * intensity) 
                                     styles.append(f'background-color: rgba(231, 76, 60, {alpha}); color: white;')
