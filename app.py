@@ -10,6 +10,7 @@ import io
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
 
 st.title("📦 Operasyon Kalite - Sayım Farkı Dashboard")
+st.markdown("Ekip arkadaşlarınızla paylaşabileceğiniz interaktif sayım farkı, kayıp ve buldum analiz aracı.")
 
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
@@ -33,7 +34,6 @@ def label_bars(ax, is_money=False):
                         ha='center', va='center', xytext=(0, 9), 
                         textcoords='offset points', fontsize=9, fontweight='bold')
 
-# Grafiklerde öncelikli gösterilecek ürünler
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 
 # 3. DOSYA YÜKLEME ALANI
@@ -43,11 +43,14 @@ with st.sidebar:
     uploaded_files = st.file_uploader("Excel Dosyalarını Sürükleyin", type=['xlsx'], accept_multiple_files=True)
 
 # 4. ANALİZ VE DASHBOARD
-if len(uploaded_files) < 2:
-    st.warning("Grafiklerin ve fark analizinin oluşabilmesi için lütfen sol menüden en az 2 adet Excel dosyası yükleyin.")
+if len(uploaded_files) == 0:
+    st.info("👈 Lütfen sol menüden analiz edilecek 2 adet Excel dosyasını yükleyin.")
+elif len(uploaded_files) == 1:
+    st.warning("⚠️ Karşılaştırma yapabilmek için 1 adet daha Excel dosyası yüklemeniz gerekmektedir.")
+elif len(uploaded_files) > 2:
+    st.error("❌ HATA: Sisteme aynı anda en fazla 2 adet dosya yükleyebilirsiniz. Lütfen fazladan yüklediğiniz dosyaları sol menüden çarpı (X) işaretine basarak silin.")
 else:
     with st.spinner("Dinamik Grafikler ve Tablolar Hazırlanıyor..."):
-        # Veri Hazırlığı
         liste = []
         for f in uploaded_files:
             df = pd.read_excel(f, header=0)
@@ -59,7 +62,6 @@ else:
         
         df_master = pd.concat(liste, ignore_index=True).sort_values(by='Rapor_Tarihi')
         
-        # BRÜT KAYIP VE BULDUM HESAPLAMALARI
         df_master['Kayıp_Adet'] = df_master['Stokta Bulunan'].apply(lambda x: x if x > 0 else 0)
         df_master['Buldum_Adet'] = df_master['Stokta Bulunan'].apply(lambda x: x if x < 0 else 0)
         
@@ -165,19 +167,12 @@ else:
                     cat_pivot = df_master.pivot_table(index='Buying Category Name', columns='Rapor_Tarihi', values='Toplam Fiyat', aggfunc='sum').fillna(0)
                     cat_pivot['Fark'] = cat_pivot.iloc[:, -1] - cat_pivot.iloc[:, 0]
                     
-                    # 1. En büyük değişimi olan 10 kategoriyi çekiyoruz
                     top_10_fark = cat_pivot.sort_values(by='Fark', key=abs, ascending=False).head(10)
-                    
-                    # 2. ŞELALE SIRALAMASI: Yukarıdan aşağıya (Büyük Artı -> Küçük Artı -> Büyük Eksi -> Küçük Eksi)
-                    # Plotly aşağıdan yukarı çizdiği için Dataframe'i tam tersi dizeceğiz:
-                    pos_df = top_10_fark[top_10_fark['Fark'] > 0].sort_values(by='Fark', ascending=True)
-                    neg_df = top_10_fark[top_10_fark['Fark'] <= 0].sort_values(by='Fark', ascending=False)
-                    top_10_fark = pd.concat([neg_df, pos_df])
+                    top_10_fark = top_10_fark.sort_values(by='Fark', ascending=True)
                     
                     text_fark = [format_money(val) for val in top_10_fark['Fark']]
                     fark_renkler = get_colors_by_value(top_10_fark['Fark'])
                     
-                    # categoryorder parametresi kaldırıldı, kendi sıralamamızı dinleyecek
                     fig3_web = go.Figure(go.Bar(x=top_10_fark['Fark'], y=top_10_fark.index, orientation='h', text=text_fark, textposition='auto', marker_color=fark_renkler))
                     fig3_web.update_layout(height=450, margin=dict(t=0, l=0, r=0, b=0))
                     st.plotly_chart(fig3_web, use_container_width=True)
@@ -189,7 +184,7 @@ else:
                     pdf.savefig(fig3, bbox_inches='tight')
                     plt.close(fig3)
 
-            # --- TAB 3: DIVE DEEP (ÜÇLÜ FİLTRELİ) ---
+            # --- TAB 3: DIVE DEEP (RENKLİ VE FİLTRELİ) ---
             with tab3:
                 st.subheader("Tüm Depo - Malzeme No (SKU) Bazlı Analiz")
                 deep_df = df_master.copy()
@@ -204,7 +199,6 @@ else:
                 degisim_farki = deep_pivot[('Analiz', 'Fark_Adet')]
                 deep_final = deep_pivot[(son_tarih_stok != 0) | (degisim_farki != 0)].sort_values(by=[('Analiz', 'Fark_Fiyat_TL')], ascending=False)
                 
-                # Görüntü kirliliğini önlemek için 'Birim Fiyat' sütunlarını siliyoruz
                 if 'Birim Fiyat' in deep_final.columns.get_level_values(0):
                     deep_final = deep_final.drop(columns=['Birim Fiyat'])
                 
@@ -229,7 +223,49 @@ else:
                     if secilen_skular:
                         filtered_df = filtered_df[filtered_df.index.get_level_values('malzeme no').isin(secilen_skular)]
                     
-                    st.dataframe(filtered_df.style.format({('Analiz', 'Fark_Fiyat_TL'): format_money}), use_container_width=True)
+                    # --- YENİ AKILLI RENKLENDİRME (STYLING) MANTIĞI ---
+                    tarih1 = filtered_df['Stokta Bulunan'].columns.tolist()[0]
+                    tarih2 = filtered_df['Stokta Bulunan'].columns.tolist()[-1]
+                    
+                    max_kayip = filtered_df[('Analiz', 'Fark_Fiyat_TL')].max() if not filtered_df.empty else 0
+                    min_buldum = filtered_df[('Analiz', 'Fark_Fiyat_TL')].min() if not filtered_df.empty else 0
+
+                    def akilli_renklendirme(row):
+                        styles = []
+                        fark = row[('Analiz', 'Fark_Fiyat_TL')]
+                        
+                        for col in row.index:
+                            # 1. DÜN ve BUGÜN kolonları
+                            if col[0] == 'Stokta Bulunan' and col[1] == tarih1:
+                                styles.append('background-color: rgba(255, 255, 255, 0.04); color: #a0aec0;') # Mat, soluk (Dün)
+                            elif col[0] == 'Stokta Bulunan' and col[1] == tarih2:
+                                styles.append('background-color: rgba(255, 255, 255, 0.12); color: #ffffff; font-weight: bold;') # Parlak, kalın (Bugün)
+                            
+                            # 2. ANALİZ kısmı (Değere Göre Şelale Geçişi)
+                            elif col[0] == 'Analiz':
+                                if fark > 0 and max_kayip > 0:
+                                    intensity = fark / max_kayip
+                                    alpha = 0.15 + (0.6 * intensity) # %15'ten %75'e kadar koyulaşan Kırmızı
+                                    styles.append(f'background-color: rgba(231, 76, 60, {alpha}); color: white;')
+                                elif fark < 0 and min_buldum < 0:
+                                    intensity = fark / min_buldum # negatif/negatif = pozitif yoğunluk
+                                    alpha = 0.15 + (0.6 * intensity) # %15'ten %75'e kadar koyulaşan Yeşil
+                                    styles.append(f'background-color: rgba(46, 204, 113, {alpha}); color: white;')
+                                else:
+                                    styles.append('background-color: rgba(255,255,255, 0.02);') # Sabitler için çok hafif gri
+                            else:
+                                styles.append('') # Ürün isimleri vs sade kalsın
+                        return styles
+
+                    # Formatlama ve Stili Uygulama
+                    styled_df = filtered_df.style.apply(akilli_renklendirme, axis=1).format({
+                        ('Stokta Bulunan', tarih1): "{:.0f}",  # Küsuratlı sıfırları temizler
+                        ('Stokta Bulunan', tarih2): "{:.0f}",  # Küsuratlı sıfırları temizler
+                        ('Analiz', 'Fark_Adet'): "{:.0f}",
+                        ('Analiz', 'Fark_Fiyat_TL'): format_money
+                    })
+                    
+                    st.dataframe(styled_df, use_container_width=True)
 
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                     filtered_df.to_excel(writer, sheet_name='Filtreli_Analiz')
