@@ -207,10 +207,15 @@ else:
                     filtered_df = deep_final
                 else:
                     col_f1, col_f2, col_f3 = st.columns(3)
+                    
                     mevcut_tipler = sorted(deep_final.index.get_level_values('Ürün Tipi').unique().tolist())
                     secilen_tipler = col_f1.multiselect("📊 Ürün Tipi Seçin:", options=mevcut_tipler, default=[])
+                    
                     mevcut_durumlar = deep_final[('Analiz', 'DURUM')].unique().tolist()
-                    secilen_durumlar = col_f2.multiselect("📌 Durum Seçin:", options=mevcut_durumlar, default=mevcut_durumlar)
+                    # SABİT hariç sadece KAYIP ve BULDUM varsayılan olarak seçili gelir
+                    varsayilan_durumlar = [d for d in mevcut_durumlar if d in ['KAYIP', 'BULDUM']]
+                    secilen_durumlar = col_f2.multiselect("📌 Durum Seçin:", options=mevcut_durumlar, default=varsayilan_durumlar)
+                    
                     mevcut_skular = deep_final.index.get_level_values('malzeme no').unique().tolist()
                     secilen_skular = col_f3.multiselect("🔍 Malzeme No Ara:", options=mevcut_skular)
                     
@@ -223,7 +228,6 @@ else:
                     if secilen_skular:
                         filtered_df = filtered_df[filtered_df.index.get_level_values('malzeme no').isin(secilen_skular)]
                     
-                    # --- YENİ AKILLI RENKLENDİRME (STYLING) MANTIĞI ---
                     tarih1 = filtered_df['Stokta Bulunan'].columns.tolist()[0]
                     tarih2 = filtered_df['Stokta Bulunan'].columns.tolist()[-1]
                     
@@ -235,32 +239,28 @@ else:
                         fark = row[('Analiz', 'Fark_Fiyat_TL')]
                         
                         for col in row.index:
-                            # 1. DÜN ve BUGÜN kolonları
                             if col[0] == 'Stokta Bulunan' and col[1] == tarih1:
-                                styles.append('background-color: rgba(255, 255, 255, 0.04); color: #a0aec0;') # Mat, soluk (Dün)
+                                styles.append('background-color: rgba(255, 255, 255, 0.04); color: #a0aec0;') 
                             elif col[0] == 'Stokta Bulunan' and col[1] == tarih2:
-                                styles.append('background-color: rgba(255, 255, 255, 0.12); color: #ffffff; font-weight: bold;') # Parlak, kalın (Bugün)
-                            
-                            # 2. ANALİZ kısmı (Değere Göre Şelale Geçişi)
+                                styles.append('background-color: rgba(255, 255, 255, 0.12); color: #ffffff; font-weight: bold;') 
                             elif col[0] == 'Analiz':
                                 if fark > 0 and max_kayip > 0:
                                     intensity = fark / max_kayip
-                                    alpha = 0.15 + (0.6 * intensity) # %15'ten %75'e kadar koyulaşan Kırmızı
+                                    alpha = 0.15 + (0.6 * intensity) 
                                     styles.append(f'background-color: rgba(231, 76, 60, {alpha}); color: white;')
                                 elif fark < 0 and min_buldum < 0:
-                                    intensity = fark / min_buldum # negatif/negatif = pozitif yoğunluk
-                                    alpha = 0.15 + (0.6 * intensity) # %15'ten %75'e kadar koyulaşan Yeşil
+                                    intensity = fark / min_buldum 
+                                    alpha = 0.15 + (0.6 * intensity) 
                                     styles.append(f'background-color: rgba(46, 204, 113, {alpha}); color: white;')
                                 else:
-                                    styles.append('background-color: rgba(255,255,255, 0.02);') # Sabitler için çok hafif gri
+                                    styles.append('background-color: rgba(255,255,255, 0.02);') 
                             else:
-                                styles.append('') # Ürün isimleri vs sade kalsın
+                                styles.append('') 
                         return styles
 
-                    # Formatlama ve Stili Uygulama
                     styled_df = filtered_df.style.apply(akilli_renklendirme, axis=1).format({
-                        ('Stokta Bulunan', tarih1): "{:.0f}",  # Küsuratlı sıfırları temizler
-                        ('Stokta Bulunan', tarih2): "{:.0f}",  # Küsuratlı sıfırları temizler
+                        ('Stokta Bulunan', tarih1): "{:.0f}",  
+                        ('Stokta Bulunan', tarih2): "{:.0f}",  
                         ('Analiz', 'Fark_Adet'): "{:.0f}",
                         ('Analiz', 'Fark_Fiyat_TL'): format_money
                     })
