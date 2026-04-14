@@ -10,6 +10,7 @@ import io
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
 
 st.title("📦 Operasyon Kalite - Sayım Farkı Dashboard")
+st.markdown("Ekip arkadaşlarınızla paylaşabileceğiniz interaktif sayım farkı, kayıp ve buldum analiz aracı.")
 
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
@@ -33,21 +34,18 @@ def label_bars(ax, is_money=False):
                         ha='center', va='center', xytext=(0, 9), 
                         textcoords='offset points', fontsize=9, fontweight='bold')
 
+# Grafiklerde öncelikli gösterilecek ürünler
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 
 # 3. DOSYA YÜKLEME ALANI
 with st.sidebar:
     st.header("📂 Dosya Yükleme")
-    st.info("Karşılaştırma için tam 2 adet Excel raporu seçin.")
+    st.info("Analiz edilecek Excel raporlarını seçin (En az 2 dosya)")
     uploaded_files = st.file_uploader("Excel Dosyalarını Sürükleyin", type=['xlsx'], accept_multiple_files=True)
 
-# 4. ANALİZ VE DASHBOARD (GÜVENLİK KURALLARI EKLENDİ)
-if len(uploaded_files) == 0:
-    st.info("👈 Lütfen sol menüden analiz edilecek 2 adet Excel dosyasını yükleyin.")
-elif len(uploaded_files) == 1:
-    st.warning("⚠️ Karşılaştırma yapabilmek için 1 adet daha Excel dosyası yüklemeniz gerekmektedir.")
-elif len(uploaded_files) > 2:
-    st.error("❌ HATA: Sisteme aynı anda en fazla 2 adet dosya yükleyebilirsiniz. Lütfen fazladan yüklediğiniz dosyaları sol menüden çarpı (X) işaretine basarak silin.")
+# 4. ANALİZ VE DASHBOARD
+if len(uploaded_files) < 2:
+    st.warning("Grafiklerin ve fark analizinin oluşabilmesi için lütfen sol menüden en az 2 adet Excel dosyası yükleyin.")
 else:
     with st.spinner("Dinamik Grafikler ve Tablolar Hazırlanıyor..."):
         # Veri Hazırlığı
@@ -167,11 +165,15 @@ else:
                     st.subheader("Kategori Bazlı Finansal Değişim (İlk vs Son Rapor)")
                     cat_pivot = df_master.pivot_table(index='Buying Category Name', columns='Rapor_Tarihi', values='Toplam Fiyat', aggfunc='sum').fillna(0)
                     cat_pivot['Fark'] = cat_pivot.iloc[:, -1] - cat_pivot.iloc[:, 0]
+                    
                     top_10_fark = cat_pivot.sort_values(by='Fark', key=abs, ascending=False).head(10)
+                    top_10_fark = top_10_fark.sort_values(by='Fark', ascending=True)
+                    
                     text_fark = [format_money(val) for val in top_10_fark['Fark']]
                     fark_renkler = get_colors_by_value(top_10_fark['Fark'])
+                    
                     fig3_web = go.Figure(go.Bar(x=top_10_fark['Fark'], y=top_10_fark.index, orientation='h', text=text_fark, textposition='auto', marker_color=fark_renkler))
-                    fig3_web.update_layout(yaxis={'categoryorder':'total ascending'}, height=450, margin=dict(t=0, l=0, r=0, b=0))
+                    fig3_web.update_layout(height=450, margin=dict(t=0, l=0, r=0, b=0))
                     st.plotly_chart(fig3_web, use_container_width=True)
 
                     fig3, ax_cat = plt.subplots(figsize=(10, 8))
@@ -186,13 +188,20 @@ else:
                 st.subheader("Tüm Depo - Malzeme No (SKU) Bazlı Analiz")
                 deep_df = df_master.copy()
                 deep_pivot = deep_df.pivot_table(index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values=['Stokta Bulunan', 'Birim Fiyat'], aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}).fillna(0)
+                
+                # Arka planda hesaplamalar
                 deep_pivot[('Analiz', 'Fark_Adet')] = deep_pivot['Stokta Bulunan'].iloc[:, -1] - deep_pivot['Stokta Bulunan'].iloc[:, 0]
                 deep_pivot[('Analiz', 'DURUM')] = deep_pivot[('Analiz', 'Fark_Adet')].apply(lambda x: "KAYIP" if x > 0 else ("BULDUM" if x < 0 else "SABİT"))
                 gecerli_fiyat = deep_pivot['Birim Fiyat'].max(axis=1)
                 deep_pivot[('Analiz', 'Fark_Fiyat_TL')] = deep_pivot[('Analiz', 'Fark_Adet')] * gecerli_fiyat
+                
                 son_tarih_stok = deep_pivot['Stokta Bulunan'].iloc[:, -1]
                 degisim_farki = deep_pivot[('Analiz', 'Fark_Adet')]
                 deep_final = deep_pivot[(son_tarih_stok != 0) | (degisim_farki != 0)].sort_values(by=[('Analiz', 'Fark_Fiyat_TL')], ascending=False)
+                
+                # Görüntü kirliliğini önlemek için 'Birim Fiyat' sütunlarını siliyoruz
+                if 'Birim Fiyat' in deep_final.columns.get_level_values(0):
+                    deep_final = deep_final.drop(columns=['Birim Fiyat'])
                 
                 if deep_final.empty:
                     st.info("💡 Seçili tarihler arasında hareket gören veya güncelde açığı bulunan bir SKU kalmamıştır.")
