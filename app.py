@@ -5,11 +5,29 @@ import seaborn as sns
 from matplotlib.backends.backend_pdf import PdfPages
 import plotly.graph_objects as go
 import io
+import requests
+import json
 
 # 1. SAYFA AYARLARI (Geniş Ekran Modu)
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
 
 st.title("📦 Operasyon Kalite - Sayım Farkı Dashboard")
+
+# ==========================================
+# 🔔 SLACK BOT AYARLARI
+# ==========================================
+slack_bildirim_gidecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu'] # Alarm kurulacak ürünler
+SLACK_WEBHOOK_URL = "" # KOPYALADIĞIN LİNKİ BURAYA YAPIŞTIR (Örn: "https://hooks.slack.com/...")
+
+def slack_bildirimi_gonder(mesaj):
+    if not SLACK_WEBHOOK_URL or SLACK_WEBHOOK_URL == "":
+        return # Link girilmediyse hata vermeden geç
+    try:
+        payload = {"text": mesaj}
+        requests.post(SLACK_WEBHOOK_URL, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
+    except Exception as e:
+        print(f"Slack hatası: {e}")
+# ==========================================
 
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
@@ -115,12 +133,37 @@ else:
                 st.subheader("📋 Değişim Özeti (Sadece Hareketi Olan Kategoriler)")
                 ozet_pivot = dash_grouped.pivot_table(index='Ürün Tipi', columns='Rapor_Tarihi', values=['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat'], aggfunc='sum').fillna(0)
                 degisim_df = pd.DataFrame()
-                degisim_df['Ürün Tipi'] = ozet_pivot.index
-                degisim_df['Kayıp Değişimi (Adet)'] = (ozet_pivot['Kayıp_Adet'].iloc[:, -1] - ozet_pivot['Kayıp_Adet'].iloc[:, 0]).values
-                degisim_df['Buldum Değişimi (Adet)'] = (ozet_pivot['Buldum_Adet'].iloc[:, -1] - ozet_pivot['Buldum_Adet'].iloc[:, 0]).values
-                degisim_df['Net Adet Değişimi'] = (ozet_pivot['Stokta Bulunan'].iloc[:, -1] - ozet_pivot['Stokta Bulunan'].iloc[:, 0]).values
-                degisim_df['Net Tutar Değişimi (TL)'] = (ozet_pivot['Toplam Fiyat'].iloc[:, -1] - ozet_pivot['Toplam Fiyat'].iloc[:, 0]).values
-                degisim_df = degisim_df[(degisim_df['Kayıp Değişimi (Adet)'] != 0) | (degisim_df['Buldum Değişimi (Adet)'] != 0) | (degisim_df['Net Adet Değişimi'] != 0)].copy()
+                
+                # --- HATA ÇÖZÜMÜ BURADA (GÜVENLİK KONTROLÜ EKLENDİ) ---
+                if not ozet_pivot.empty and 'Kayıp_Adet' in ozet_pivot:
+                    degisim_df['Ürün Tipi'] = ozet_pivot.index
+                    degisim_df['Kayıp Değişimi (Adet)'] = (ozet_pivot['Kayıp_Adet'].iloc[:, -1] - ozet_pivot['Kayıp_Adet'].iloc[:, 0]).values
+                    degisim_df['Buldum Değişimi (Adet)'] = (ozet_pivot['Buldum_Adet'].iloc[:, -1] - ozet_pivot['Buldum_Adet'].iloc[:, 0]).values
+                    degisim_df['Net Adet Değişimi'] = (ozet_pivot['Stokta Bulunan'].iloc[:, -1] - ozet_pivot['Stokta Bulunan'].iloc[:, 0]).values
+                    degisim_df['Net Tutar Değişimi (TL)'] = (ozet_pivot['Toplam Fiyat'].iloc[:, -1] - ozet_pivot['Toplam Fiyat'].iloc[:, 0]).values
+                    degisim_df = degisim_df[(degisim_df['Kayıp Değişimi (Adet)'] != 0) | (degisim_df['Buldum Değişimi (Adet)'] != 0) | (degisim_df['Net Adet Değişimi'] != 0)].copy()
+
+                # --- SLACK BİLDİRİM TETİKLEYİCİSİ ---
+                if not degisim_df.empty and SLACK_WEBHOOK_URL != "":
+                    kritik_degisimler = degisim_df[degisim_df['Ürün Tipi'].str.lower().isin([u.lower() for u in slack_bildirim_gidecek_urunler])]
+                    if not kritik_degisimler.empty:
+                        mesaj_icerigi = "*🚨 KRİTİK ÜRÜN STOK ALARMI!*\n_Yeni yüklenen raporlara göre spesifik ürünlerde sayım farkı hareketleri tespit edildi:_\n\n"
+                        hareket_var = False
+                        
+                        for _, row in kritik_degisimler.iterrows():
+                            urun = row['Ürün Tipi'].upper()
+                            net_degisim = row['Net Adet Değişimi']
+                            
+                            if net_degisim > 0:
+                                mesaj_icerigi += f"🔻 *{urun}:* {net_degisim:.0f} Adet YENİ KAYIP\n"
+                                hareket_var = True
+                            elif net_degisim < 0:
+                                mesaj_icerigi += f"🟢 *{urun}:* {abs(net_degisim):.0f} Adet BULDUM (Açık Kapandı)\n"
+                                hareket_var = True
+                                
+                        if hareket_var:
+                            slack_bildirimi_gonder(mesaj_icerigi)
+                # -----------------------------------
 
                 if degisim_df.empty:
                     st.info("💡 Seçili tarihler arasında bu kategorilerde herhangi bir stok sayım farkı hareketi (değişim) olmamıştır.")
@@ -136,19 +179,23 @@ else:
                 plt.subplots_adjust(hspace=0.4, wspace=0.3)
                 for i, urun in enumerate(izlenecek_urunler):
                     urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
-                    m_colors = get_colors_by_value(urun_data['Stokta Bulunan'])
-                    ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=m_colors)
-                    axes[0, i].set_title(f'{urun.upper()}\nNET FARK ADET', fontsize=11, fontweight='bold')
-                    label_bars(ax_m, is_money=False)
-                    t_colors = get_colors_by_value(urun_data['Toplam Fiyat'])
-                    ax_t = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=t_colors)
-                    axes[1, i].set_title(f'NET FARK DEĞERİ (TL)', fontsize=11, fontweight='bold')
-                    label_bars(ax_t, is_money=True)
+                    if not urun_data.empty: # Grafik çizerken de boş veriyi koruyoruz
+                        m_colors = get_colors_by_value(urun_data['Stokta Bulunan'])
+                        ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=m_colors)
+                        axes[0, i].set_title(f'{urun.upper()}\nNET FARK ADET', fontsize=11, fontweight='bold')
+                        label_bars(ax_m, is_money=False)
+                        t_colors = get_colors_by_value(urun_data['Toplam Fiyat'])
+                        ax_t = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=t_colors)
+                        axes[1, i].set_title(f'NET FARK DEĞERİ (TL)', fontsize=11, fontweight='bold')
+                        label_bars(ax_t, is_money=True)
+                    else:
+                        axes[0, i].set_title(f'{urun.upper()}\n(Veri Yok)', fontsize=11, fontweight='bold')
+                        axes[1, i].set_title(f'(Veri Yok)', fontsize=11, fontweight='bold')
                 plt.suptitle(f'SAYIM FARKI DASHBOARD - {son_tarih}\n(Kırmızı: Kayıp | Yeşil: Buldum)', fontsize=22, fontweight='bold', y=0.98)
                 pdf.savefig(fig1, bbox_inches='tight')
                 plt.close(fig1)
 
-            # --- TAB 2: KATEGORİ DETAYI (ŞELALE SIRALAMASI DÜZELTİLDİ) ---
+            # --- TAB 2: KATEGORİ DETAYI ---
             with tab2:
                 col1, col2 = st.columns(2)
                 with col1:
@@ -172,10 +219,8 @@ else:
                     cat_pivot = df_master.pivot_table(index='Buying Category Name', columns='Rapor_Tarihi', values='Toplam Fiyat', aggfunc='sum').fillna(0)
                     cat_pivot['Fark'] = cat_pivot.iloc[:, -1] - cat_pivot.iloc[:, 0]
                     
-                    # 1. En büyük değişimi olan 10 kategoriyi çekiyoruz
                     top_10_fark = cat_pivot.sort_values(by='Fark', key=abs, ascending=False).head(10)
                     
-                    # 2. ŞELALE SIRALAMASI: Yukarıdan aşağıya (Büyük Artı -> Küçük Artı -> Büyük Eksi -> Küçük Eksi)
                     pos_df = top_10_fark[top_10_fark['Fark'] > 0].sort_values(by='Fark', ascending=True)
                     neg_df = top_10_fark[top_10_fark['Fark'] <= 0].sort_values(by='Fark', ascending=False)
                     top_10_fark = pd.concat([neg_df, pos_df])
@@ -194,7 +239,7 @@ else:
                     pdf.savefig(fig3, bbox_inches='tight')
                     plt.close(fig3)
 
-            # --- TAB 3: DIVE DEEP (DİP TOPLAM EKLENDİ) ---
+            # --- TAB 3: DIVE DEEP ---
             with tab3:
                 st.subheader("Tüm Depo - Malzeme No (SKU) Bazlı Analiz")
                 deep_df = df_master.copy()
@@ -255,7 +300,6 @@ else:
                     max_kayip = filtered_df[('Analiz', 'Fark_Fiyat_TL')].max() if not filtered_df.empty else 0
                     min_buldum = filtered_df[('Analiz', 'Fark_Fiyat_TL')].min() if not filtered_df.empty else 0
 
-                    # --- DİP TOPLAM (GRAND TOTAL) SATIRI ---
                     if not filtered_df.empty:
                         t1_sum = filtered_df[('Stokta Bulunan', tarih1)].sum()
                         t2_sum = filtered_df[('Stokta Bulunan', tarih2)].sum()
@@ -277,8 +321,6 @@ else:
 
                     def akilli_renklendirme(row):
                         styles = []
-                        
-                        # Eğer bu satır Genel Toplam satırıysa komple farklı ve belirgin bir stil uygula
                         if row.name[0] == 'GENEL TOPLAM':
                             return ['background-color: #f39c12; color: #2c3e50; font-weight: bold; font-size: 14px;' for _ in row.index]
 
@@ -320,7 +362,10 @@ else:
                     if not deep_final.empty:
                         filtered_df_with_total.to_excel(writer, sheet_name='Filtreli_Analiz')
                     top_10_fark.to_excel(writer, sheet_name='Kategori_Ozeti')
-                    degisim_df.to_excel(writer, sheet_name='Genel_Degisim_Ozeti', index=False)
+                    
+                    # Eğer degisim_df boş değilse excel'e yaz
+                    if not degisim_df.empty:
+                        degisim_df.to_excel(writer, sheet_name='Genel_Degisim_Ozeti', index=False)
 
         st.markdown("---")
         st.header("📥 Raporları İndir")
