@@ -62,7 +62,7 @@ izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'I
 # 3. DOSYA YÜKLEME ALANI
 with st.sidebar:
     st.header("📂 Dosya Yükleme")
-    st.info("Karşılaştırma yapılacak raporları seçin (Örn: 4114_DepoA, 3514_DepoA...)")
+    st.info("Karşılaştırma yapılacak raporları seçin (Örn: 1504_DepoA, 1604_DepoA...)")
     uploaded_files = st.file_uploader("Excel Dosyalarını Sürükleyin", type=['xlsx'], accept_multiple_files=True)
 
 # 4. ANALİZ VE DASHBOARD
@@ -75,7 +75,6 @@ else:
             df = pd.read_excel(f, header=0)
             df.columns = df.columns.str.strip()
             dosya_adi = f.name.replace(".xlsx", "")
-            # Dosya isminin ilk 4 hanesinin tarih olduğunu varsayıyoruz (Örn: 1504)
             kisa_tarih = f"{dosya_adi[:2]}/{dosya_adi[2:4]}"
             df['Rapor_Tarihi'] = kisa_tarih
             liste.append(df)
@@ -93,14 +92,14 @@ else:
         # --- AKILLI DEPO SÜTUNU BULUCU ---
         depo_col = next((c for c in df_master.columns if 'depo' in c.lower() or 'plant' in c.lower() or 'tesis' in c.lower() or 'lokasyon' in c.lower()), None)
         
-        # --- DEPO FİLTRESİ ---
+        # --- GLOBAL DEPO FİLTRESİ ---
         st.success(f"✅ {len(uploaded_files)} adet dosya başarıyla işlendi ve birleştirildi!")
         
         if depo_col:
             mevcut_depolar = sorted(df_master[depo_col].dropna().astype(str).unique().tolist())
-            st.markdown("### 🏢 Depo Filtresi")
+            st.markdown("### 🏢 Global Depo Filtresi")
             secilen_depolar = st.multiselect(
-                f"Analiz edilecek depoları seçin deponun konsolide toplamını görürsünüz):", 
+                f"Analiz edilecek depoları seçin (Boş bırakırsanız {len(mevcut_depolar)} deponun konsolide toplamını görürsünüz):", 
                 options=mevcut_depolar, 
                 default=mevcut_depolar
             )
@@ -108,7 +107,7 @@ else:
             if secilen_depolar:
                 aktif_df = df_master[df_master[depo_col].astype(str).isin(secilen_depolar)].copy()
             else:
-                aktif_df = df_master.iloc[0:0].copy() # Hiçbir şey seçilmezse boş tablo döner
+                aktif_df = df_master.iloc[0:0].copy() 
         else:
             aktif_df = df_master.copy()
             st.info("💡 Excel dosyalarınızda 'Depo' veya 'Plant' isimli bir sütun bulunamadığı için depo ayırımı yapılamadı. Tüm veriler konsolide gösteriliyor.")
@@ -291,7 +290,13 @@ else:
                         else:
                             col_f1, col_f2, col_f3 = st.columns(3)
                             secilen_tipler = col_f1.multiselect("📊 Ürün Tipi:", options=sorted(deep_final.index.get_level_values('Ürün Tipi').unique().tolist()))
-                            secilen_durumlar = col_f2.multiselect("📌 Durum:", options=deep_final[('Analiz', 'DURUM')].unique().tolist(), default=["KAYIP", "BULDUM", "EŞİTLENDİ"])
+                            
+                            # --- HATA ÇÖZÜMÜ BURADA EKLENDİ ---
+                            mevcut_durumlar = deep_final[('Analiz', 'DURUM')].unique().tolist()
+                            guvenli_varsayilanlar = [d for d in ["KAYIP", "BULDUM", "EŞİTLENDİ"] if d in mevcut_durumlar]
+                            secilen_durumlar = col_f2.multiselect("📌 Durum:", options=mevcut_durumlar, default=guvenli_varsayilanlar)
+                            # -----------------------------------
+                            
                             secilen_skular = col_f3.multiselect("🔍 Malzeme No Ara:", options=deep_final.index.get_level_values('malzeme no').unique().tolist())
                             
                             filtered_df = deep_final.copy()
