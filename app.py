@@ -89,10 +89,8 @@ else:
         
         son_tarih = df_master['Rapor_Tarihi'].iloc[-1]
         
-        # --- AKILLI DEPO SÜTUNU BULUCU ---
         depo_col = next((c for c in df_master.columns if 'depo' in c.lower() or 'plant' in c.lower() or 'tesis' in c.lower() or 'lokasyon' in c.lower()), None)
         
-        # --- GLOBAL DEPO FİLTRESİ ---
         st.success(f"✅ {len(uploaded_files)} adet dosya başarıyla işlendi ve birleştirildi!")
         
         if depo_col:
@@ -280,22 +278,24 @@ else:
                         
                         deep_pivot[('Analiz', 'DURUM')] = deep_pivot.apply(belirle_durum, axis=1)
                         gecerli_fiyat = deep_pivot['Birim Fiyat'].max(axis=1)
-                        deep_pivot[('Analiz', 'Fark_Fiyat_TL')] = deep_pivot[('Analiz', 'Fark_Adet')] * gecerli_fiyat
-                        deep_final = deep_pivot[(deep_pivot['Stokta Bulunan'].iloc[:, -1] != 0) | (deep_pivot[('Analiz', 'Fark_Adet')] != 0)].sort_values(by=[('Analiz', 'Fark_Fiyat_TL')], ascending=False)
+                        
+                        # --- YENİ MANTIK: FARK YERİNE GÜNCEL TUTAR EKLENDİ ---
+                        deep_pivot[('Analiz', 'Güncel_Tutar_TL')] = deep_pivot['Stokta Bulunan'].iloc[:, -1] * gecerli_fiyat
+                        deep_final = deep_pivot[(deep_pivot['Stokta Bulunan'].iloc[:, -1] != 0) | (deep_pivot[('Analiz', 'Fark_Adet')] != 0)].sort_values(by=[('Analiz', 'Güncel_Tutar_TL')], ascending=False)
                         
                         if 'Birim Fiyat' in deep_final.columns.get_level_values(0): deep_final = deep_final.drop(columns=['Birim Fiyat'])
                         
                         if deep_final.empty:
-                            st.info("💡 Herhangi bir sayım farkı hareketi bulunamadı.")
+                            st.info("💡 Herhangi bir sayım farkı hareketi veya güncel açık bulunamadı.")
                         else:
                             col_f1, col_f2, col_f3 = st.columns(3)
                             secilen_tipler = col_f1.multiselect("📊 Ürün Tipi:", options=sorted(deep_final.index.get_level_values('Ürün Tipi').unique().tolist()))
                             
-                            # --- HATA ÇÖZÜMÜ BURADA EKLENDİ ---
+                            # --- SABİT DURUMU VARSAYILANA EKLENDİ ---
                             mevcut_durumlar = deep_final[('Analiz', 'DURUM')].unique().tolist()
-                            guvenli_varsayilanlar = [d for d in ["KAYIP", "BULDUM", "EŞİTLENDİ"] if d in mevcut_durumlar]
+                            guvenli_varsayilanlar = [d for d in ["KAYIP", "BULDUM", "EŞİTLENDİ", "SABİT"] if d in mevcut_durumlar]
                             secilen_durumlar = col_f2.multiselect("📌 Durum:", options=mevcut_durumlar, default=guvenli_varsayilanlar)
-                            # -----------------------------------
+                            # ----------------------------------------
                             
                             secilen_skular = col_f3.multiselect("🔍 Malzeme No Ara:", options=deep_final.index.get_level_values('malzeme no').unique().tolist())
                             
@@ -313,19 +313,20 @@ else:
                                 total_row[('Stokta Bulunan', tarih2)] = filtered_df[('Stokta Bulunan', tarih2)].sum()
                                 total_row[('Analiz', 'Fark_Adet')] = filtered_df[('Analiz', 'Fark_Adet')].sum()
                                 total_row[('Analiz', 'DURUM')] = "" 
-                                total_row[('Analiz', 'Fark_Fiyat_TL')] = filtered_df[('Analiz', 'Fark_Fiyat_TL')].sum()
+                                total_row[('Analiz', 'Güncel_Tutar_TL')] = filtered_df[('Analiz', 'Güncel_Tutar_TL')].sum()
                                 df_with_total = pd.concat([filtered_df, total_row])
                             else: df_with_total = filtered_df
 
-                            max_kayip = filtered_df[('Analiz', 'Fark_Fiyat_TL')].max() if not filtered_df.empty else 0
-                            min_buldum = filtered_df[('Analiz', 'Fark_Fiyat_TL')].min() if not filtered_df.empty else 0
+                            # Renk skalasını belirleyen yeni değerler
+                            max_kayip = filtered_df[('Analiz', 'Güncel_Tutar_TL')].max() if not filtered_df.empty else 0
+                            min_buldum = filtered_df[('Analiz', 'Güncel_Tutar_TL')].min() if not filtered_df.empty else 0
 
                             def light_theme_styling(row):
                                 styles = []
                                 if row.name[0] == 'GENEL TOPLAM':
                                     return ['background-color: #2c3e50; color: #ffffff; font-weight: bold; border-top: 2px solid #34495e;' for _ in row.index]
                                 
-                                fark = row[('Analiz', 'Fark_Fiyat_TL')]
+                                tutar = row[('Analiz', 'Güncel_Tutar_TL')]
                                 durum = row[('Analiz', 'DURUM')]
                                 
                                 for col in row.index:
@@ -333,17 +334,17 @@ else:
                                     elif col[0] == 'Stokta Bulunan' and col[1] == tarih2: styles.append('background-color: #ffffff; color: #2c3e50; font-weight: bold;')
                                     elif col[0] == 'Analiz':
                                         if durum == 'EŞİTLENDİ': styles.append('background-color: #d6eaf8; color: #1b4f72; font-weight: bold;')
-                                        elif fark > 0:
-                                            alpha = 0.1 + (0.4 * (fark / max_kayip)) if max_kayip > 0 else 0.2
+                                        elif tutar > 0:
+                                            alpha = 0.1 + (0.4 * (tutar / max_kayip)) if max_kayip > 0 else 0.2
                                             styles.append(f'background-color: rgba(231, 76, 60, {alpha}); color: #7b241c; font-weight: bold;')
-                                        elif fark < 0:
-                                            alpha = 0.1 + (0.4 * (fark / min_buldum)) if min_buldum < 0 else 0.2
+                                        elif tutar < 0:
+                                            alpha = 0.1 + (0.4 * (tutar / min_buldum)) if min_buldum < 0 else 0.2
                                             styles.append(f'background-color: rgba(46, 204, 113, {alpha}); color: #145a32; font-weight: bold;')
                                         else: styles.append('background-color: #ffffff; color: #2c3e50;')
                                     else: styles.append('background-color: #ffffff; color: #2c3e50;')
                                 return styles
 
-                            st.dataframe(df_with_total.style.apply(light_theme_styling, axis=1).format({('Stokta Bulunan', tarih1): "{:.0f}", ('Stokta Bulunan', tarih2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Fark_Fiyat_TL'): format_money}), use_container_width=True)
+                            st.dataframe(df_with_total.style.apply(light_theme_styling, axis=1).format({('Stokta Bulunan', tarih1): "{:.0f}", ('Stokta Bulunan', tarih2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}), use_container_width=True)
 
             st.markdown("---")
             st.header("📥 Raporları İndir")
