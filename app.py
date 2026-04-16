@@ -59,15 +59,19 @@ def label_bars(ax, is_money=False):
 
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 
-# 3. DOSYA YÜKLEME ALANI
-with st.sidebar:
-    st.header("📂 Dosya Yükleme")
-    st.info("Karşılaştırma yapılacak raporları seçin (Örn: 1504_DepoA, 1604_DepoA...)")
-    uploaded_files = st.file_uploader("Excel Dosyalarını Sürükleyin", type=['xlsx'], accept_multiple_files=True)
+# 3. YATAY DOSYA YÜKLEME ALANI
+st.markdown("### 📂 Rapor Yükleme")
+col_info, col_upload = st.columns([1, 2])
+with col_info:
+    st.info("💡 Karşılaştırma yapılacak raporları seçin (Örn: 1504_DepoA, 1604_DepoA...). Analiz için en az 2 adet (Farklı tarihlere ait) dosya yüklemelisiniz.")
+with col_upload:
+    uploaded_files = st.file_uploader("Excel Dosyalarını Buraya Sürükleyin", type=['xlsx'], accept_multiple_files=True, label_visibility="collapsed")
+
+st.markdown("---")
 
 # 4. ANALİZ VE DASHBOARD
 if len(uploaded_files) < 2:
-    st.info("👈 Lütfen analizin yapılabilmesi için en az 2 adet (Farklı tarihlere ait) Excel dosyasını sol menüden yükleyin.")
+    st.warning("👈 Lütfen analizin yapılabilmesi için en az 2 adet Excel dosyasını yukarıdaki alana sürükleyip bırakın.")
 else:
     with st.spinner("Tüm depolar taranıyor ve dinamik tablolar hazırlanıyor..."):
         liste = []
@@ -279,7 +283,6 @@ else:
                         deep_pivot[('Analiz', 'DURUM')] = deep_pivot.apply(belirle_durum, axis=1)
                         gecerli_fiyat = deep_pivot['Birim Fiyat'].max(axis=1)
                         
-                        # --- YENİ MANTIK: FARK YERİNE GÜNCEL TUTAR EKLENDİ ---
                         deep_pivot[('Analiz', 'Güncel_Tutar_TL')] = deep_pivot['Stokta Bulunan'].iloc[:, -1] * gecerli_fiyat
                         deep_final = deep_pivot[(deep_pivot['Stokta Bulunan'].iloc[:, -1] != 0) | (deep_pivot[('Analiz', 'Fark_Adet')] != 0)].sort_values(by=[('Analiz', 'Güncel_Tutar_TL')], ascending=False)
                         
@@ -291,11 +294,9 @@ else:
                             col_f1, col_f2, col_f3 = st.columns(3)
                             secilen_tipler = col_f1.multiselect("📊 Ürün Tipi:", options=sorted(deep_final.index.get_level_values('Ürün Tipi').unique().tolist()))
                             
-                            # --- SABİT DURUMU VARSAYILANA EKLENDİ ---
                             mevcut_durumlar = deep_final[('Analiz', 'DURUM')].unique().tolist()
                             guvenli_varsayilanlar = [d for d in ["KAYIP", "BULDUM", "EŞİTLENDİ", "SABİT"] if d in mevcut_durumlar]
                             secilen_durumlar = col_f2.multiselect("📌 Durum:", options=mevcut_durumlar, default=guvenli_varsayilanlar)
-                            # ----------------------------------------
                             
                             secilen_skular = col_f3.multiselect("🔍 Malzeme No Ara:", options=deep_final.index.get_level_values('malzeme no').unique().tolist())
                             
@@ -317,7 +318,6 @@ else:
                                 df_with_total = pd.concat([filtered_df, total_row])
                             else: df_with_total = filtered_df
 
-                            # Renk skalasını belirleyen yeni değerler
                             max_kayip = filtered_df[('Analiz', 'Güncel_Tutar_TL')].max() if not filtered_df.empty else 0
                             min_buldum = filtered_df[('Analiz', 'Güncel_Tutar_TL')].min() if not filtered_df.empty else 0
 
