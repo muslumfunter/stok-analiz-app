@@ -12,42 +12,47 @@ import json
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
 
 # ==========================================
-# 🎨 KOMPAKT TASARIM (BEYAZ BOŞLUKLARI DARALTMA)
+# 🎨 ULTRA KOMPAKT TASARIM (CSS OPTİMİZASYONU)
 # ==========================================
 st.markdown("""
     <style>
     /* Ana sayfa üst boşluğunu daralt */
     .block-container {
-        padding-top: 1.5rem !important;
+        padding-top: 1rem !important;
         padding-bottom: 1rem !important;
     }
     /* Başlıkların alt/üst boşluklarını kısalt */
     h1, h2, h3, h4, h5, h6 {
-        margin-top: 0.2rem !important;
-        margin-bottom: 0.2rem !important;
-        padding-top: 0.2rem !important;
-        padding-bottom: 0.2rem !important;
+        margin-top: 0.1rem !important;
+        margin-bottom: 0.1rem !important;
+        padding-top: 0.1rem !important;
+        padding-bottom: 0.1rem !important;
     }
     /* Çizgilerin kapladığı alanı küçült */
     hr {
-        margin-top: 0.5rem !important;
-        margin-bottom: 0.5rem !important;
+        margin-top: 0.3rem !important;
+        margin-bottom: 0.3rem !important;
     }
-    /* Metrik kutularının iç boşluklarını daralt */
+    /* METRİK RAKAMLARINI KÜÇÜLT VE SIKIŞTIR */
     div[data-testid="metric-container"] {
-        padding-top: 0.2rem !important;
-        padding-bottom: 0.2rem !important;
+        padding-top: 0.1rem !important;
+        padding-bottom: 0.1rem !important;
+    }
+    div[data-testid="stMetricValue"] > div {
+        font-size: 1.6rem !important; /* Rakamları küçülttük */
+    }
+    div[data-testid="stMetricLabel"] > label {
+        font-size: 0.9rem !important; /* Etiketleri küçülttük */
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Başlığı daha kompakt bir formatta yazdırıyoruz
 st.markdown("### 📦 Operasyon Kalite - Sayım Farkı Dashboard")
 
 # ==========================================
 # 🔔 SLACK BOT AYARLARI
 # ==========================================
-slack_bildirim_gidecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu'] # Alarm kurulacak ürünler
+slack_bildirim_gidecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu'] 
 SLACK_WEBHOOK_URL = "" # KOPYALADIĞIN LİNKİ BURAYA YAPIŞTIR
 
 def slack_bildirimi_gonder(mesaj):
@@ -85,15 +90,15 @@ def label_bars(ax, is_money=False):
             label = format_money(val) if is_money else f"{val:.0f}"
             ax.annotate(label, 
                         (p.get_x() + p.get_width() / 2., val), 
-                        ha='center', va='center', xytext=(0, 9), 
-                        textcoords='offset points', fontsize=9, fontweight='bold', color="#2c3e50")
+                        ha='center', va='center', xytext=(0, 7), 
+                        textcoords='offset points', fontsize=8, fontweight='bold', color="#2c3e50")
 
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 
 # 3. YATAY DOSYA YÜKLEME ALANI
 col_info, col_upload = st.columns([1, 2])
 with col_info:
-    st.info("💡 Karşılaştırma yapılacak raporları seçin (Örn: 15_DepoA, 16_DepoA...). Analiz için en az 2 adet dosya yüklemelisiniz.")
+    st.info("💡 Karşılaştırma için raporları seçin (Örn: 15_DepoA, 16_DepoA...). En az 2 adet.")
 with col_upload:
     uploaded_files = st.file_uploader("Excel Dosyalarını Buraya Sürükleyin", type=['xlsx'], accept_multiple_files=True, label_visibility="collapsed")
 
@@ -165,27 +170,19 @@ else:
                     col_ozet3.metric("🟢 Toplam Buldum (Adet)", f"{toplam_buldum_adet:,.0f}")
                     col_ozet4.metric("🟢 Toplam Buldum (TL)", format_money(toplam_buldum_tl))
                     
-                    # --- DEPO BAZLI METRİK KARTLARI ---
                     if depo_col:
                         st.markdown("<br>**📍 Depo Bazlı Güncel Durum Özeti**", unsafe_allow_html=True)
                         depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
                         
                         for _, row in depo_ozet.iterrows():
                             depo_ismi = row[depo_col]
-                            d_kayip_adet = row['Kayıp_Adet']
-                            d_kayip_tl = row['Kayıp_Tutar']
-                            d_buldum_adet = abs(row['Buldum_Adet'])
-                            d_buldum_tl = abs(row['Buldum_Tutar'])
-                            
                             st.markdown(f"**🏢 Depo: {depo_ismi}**")
                             c1, c2, c3, c4 = st.columns(4)
-                            c1.metric("🔻 Kayıp (Adet)", f"{d_kayip_adet:,.0f}")
-                            c2.metric("🔻 Kayıp (TL)", format_money(d_kayip_tl))
-                            c3.metric("🟢 Buldum (Adet)", f"{d_buldum_adet:,.0f}")
-                            c4.metric("🟢 Buldum (TL)", format_money(d_buldum_tl))
-                            # Depolar arasına şık bir kesik çizgi atıyoruz
-                            st.markdown("<hr style='border:1px dashed #bdc3c7; margin-top: 0.5rem; margin-bottom: 0.5rem;'>", unsafe_allow_html=True)
-                    # ---------------------------------------
+                            c1.metric("🔻 Kayıp (Adet)", f"{row['Kayıp_Adet']:,.0f}")
+                            c2.metric("🔻 Kayıp (TL)", format_money(row['Kayıp_Tutar']))
+                            c3.metric("🟢 Buldum (Adet)", f"{abs(row['Buldum_Adet']):,.0f}")
+                            c4.metric("🟢 Buldum (TL)", format_money(abs(row['Buldum_Tutar'])))
+                            st.markdown("<hr style='border:1px dashed #bdc3c7; margin-top: 0.2rem; margin-bottom: 0.2rem;'>", unsafe_allow_html=True)
 
                     st.markdown(f"**📉 Değişim Trendi**")
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
@@ -201,8 +198,8 @@ else:
                             
                             fig_m_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Kayıp_Adet'], name='Kayıp', marker_color='#e74c3c', text=kayip_txt, textposition='auto'))
                             fig_m_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Buldum_Adet'], name='Buldum', marker_color='#2ecc71', text=buldum_txt, textposition='auto'))
-                            fig_m_web.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br>FARK ADET", margin=dict(t=50, b=0, l=0, r=0), height=220, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
-                            fig_m_web.update_xaxes(title_text="Gün", title_font=dict(size=10))
+                            fig_m_web.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br>FARK ADET", margin=dict(t=30, b=0, l=0, r=0), height=180, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50', size=10))
+                            fig_m_web.update_xaxes(title_text="Gün", title_font=dict(size=9))
                             st.plotly_chart(fig_m_web, use_container_width=True, key=f"stok_adet_grafik_{i}")
 
                             fig_t_web = go.Figure()
@@ -211,8 +208,8 @@ else:
                             
                             fig_t_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Kayıp_Tutar'], name='Kayıp Tutar', marker_color='#e74c3c', text=k_tutar_txt, textposition='auto'))
                             fig_t_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Buldum_Tutar'], name='Buldum Tutar', marker_color='#2ecc71', text=b_tutar_txt, textposition='auto'))
-                            fig_t_web.update_layout(barmode='relative', title="TOPLAM FARK DEĞERİ (TL)", margin=dict(t=30, b=0, l=0, r=0), height=220, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
-                            fig_t_web.update_xaxes(title_text="Gün", title_font=dict(size=10))
+                            fig_t_web.update_layout(barmode='relative', title="TOPLAM FARK DEĞERİ (TL)", margin=dict(t=20, b=0, l=0, r=0), height=180, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50', size=10))
+                            fig_t_web.update_xaxes(title_text="Gün", title_font=dict(size=9))
                             st.plotly_chart(fig_t_web, use_container_width=True, key=f"toplam_deger_grafik_{i}")
 
                     st.markdown("---")
@@ -244,7 +241,8 @@ else:
                     else:
                         st.dataframe(degisim_df.style.format({'Kayıp Değişimi (Adet)': "{:,.0f}", 'Buldum Değişimi (Adet)': "{:,.0f}", 'Net Adet Değişimi': "{:,.0f}", 'Net Tutar Değişimi (TL)': "{:,.0f}"}), use_container_width=True, hide_index=True)
 
-                    fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(22, 12))
+                    # Matplotlib grafiklerini de küçülttük (16, 8)
+                    fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(16, 8))
                     plt.subplots_adjust(hspace=0.4, wspace=0.3)
                     fig1.patch.set_facecolor('#f4f6f9')
                     for i, urun in enumerate(izlenecek_urunler):
@@ -252,23 +250,23 @@ else:
                         if not urun_data.empty: 
                             m_colors = get_colors_by_value(urun_data['Stokta Bulunan'])
                             ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=m_colors)
-                            axes[0, i].set_title(f'{urun.upper()}\nNET FARK ADET', fontsize=11, fontweight='bold', color='#2c3e50')
-                            axes[0, i].tick_params(colors='#2c3e50')
+                            axes[0, i].set_title(f'{urun.upper()}\nNET FARK ADET', fontsize=10, fontweight='bold', color='#2c3e50')
+                            axes[0, i].tick_params(colors='#2c3e50', labelsize=8)
                             axes[0, i].set_facecolor('#f4f6f9')
-                            axes[0, i].set_xlabel("Gün")
+                            axes[0, i].set_xlabel("Gün", fontsize=8)
                             label_bars(ax_m, is_money=False)
                             
                             t_colors = get_colors_by_value(urun_data['Toplam Fiyat'])
                             ax_t = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=t_colors)
-                            axes[1, i].set_title(f'NET FARK DEĞERİ (TL)', fontsize=11, fontweight='bold', color='#2c3e50')
-                            axes[1, i].tick_params(colors='#2c3e50')
+                            axes[1, i].set_title(f'NET FARK DEĞERİ (TL)', fontsize=10, fontweight='bold', color='#2c3e50')
+                            axes[1, i].tick_params(colors='#2c3e50', labelsize=8)
                             axes[1, i].set_facecolor('#f4f6f9')
-                            axes[1, i].set_xlabel("Gün")
+                            axes[1, i].set_xlabel("Gün", fontsize=8)
                             label_bars(ax_t, is_money=True)
                         else:
-                            axes[0, i].set_title(f'{urun.upper()}\n(Veri Yok)', fontsize=11, fontweight='bold')
-                            axes[1, i].set_title(f'(Veri Yok)', fontsize=11, fontweight='bold')
-                    plt.suptitle(f'SAYIM FARKI DASHBOARD - Gün {son_tarih}\n(Kırmızı: Kayıp | Yeşil: Buldum)', fontsize=22, fontweight='bold', color='#2c3e50', y=0.98)
+                            axes[0, i].set_title(f'{urun.upper()}\n(Veri Yok)', fontsize=10, fontweight='bold')
+                            axes[1, i].set_title(f'(Veri Yok)', fontsize=10, fontweight='bold')
+                    plt.suptitle(f'SAYIM FARKI DASHBOARD - Gün {son_tarih}\n(Kırmızı: Kayıp | Yeşil: Buldum)', fontsize=16, fontweight='bold', color='#2c3e50', y=0.98)
                     pdf.savefig(fig1, bbox_inches='tight')
                     plt.close(fig1)
 
@@ -281,15 +279,15 @@ else:
                         
                         if not top_10_stok_degeri.empty:
                             fig2_web = go.Figure(go.Bar(x=top_10_stok_degeri.values, y=top_10_stok_degeri.index, orientation='h', marker=dict(color=top_10_stok_degeri.values, colorscale='Reds')))
-                            fig2_web.update_layout(yaxis={'categoryorder':'total ascending'}, height=450, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
+                            fig2_web.update_layout(yaxis={'categoryorder':'total ascending'}, height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(fig2_web, use_container_width=True)
 
-                            fig2, ax_top = plt.subplots(figsize=(10, 8))
+                            fig2, ax_top = plt.subplots(figsize=(8, 6))
                             fig2.patch.set_facecolor('#f4f6f9')
                             ax_top.set_facecolor('#f4f6f9')
                             sns.barplot(x=top_10_stok_degeri.values, y=top_10_stok_degeri.index, palette='Reds_r', ax=ax_top)
-                            plt.title('GÜNCEL SAYIM AÇIĞI (TL)', fontsize=14, fontweight='bold', color='#2c3e50')
-                            ax_top.tick_params(colors='#2c3e50')
+                            plt.title('GÜNCEL SAYIM AÇIĞI (TL)', fontsize=12, fontweight='bold', color='#2c3e50')
+                            ax_top.tick_params(colors='#2c3e50', labelsize=8)
                             label_bars(ax_top, is_money=True)
                             pdf.savefig(fig2, bbox_inches='tight')
                             plt.close(fig2)
@@ -302,15 +300,15 @@ else:
                             top_10_fark = cat_pivot.sort_values(by='Fark', key=abs, ascending=False).head(10)
                             top_10_fark = pd.concat([top_10_fark[top_10_fark['Fark'] <= 0].sort_values(by='Fark', ascending=False), top_10_fark[top_10_fark['Fark'] > 0].sort_values(by='Fark', ascending=True)])
                             fig3_web = go.Figure(go.Bar(x=top_10_fark['Fark'], y=top_10_fark.index, orientation='h', marker_color=get_colors_by_value(top_10_fark['Fark'])))
-                            fig3_web.update_layout(height=450, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
+                            fig3_web.update_layout(height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(fig3_web, use_container_width=True)
 
-                            fig3, ax_cat = plt.subplots(figsize=(10, 8))
+                            fig3, ax_cat = plt.subplots(figsize=(8, 6))
                             fig3.patch.set_facecolor('#f4f6f9')
                             ax_cat.set_facecolor('#f4f6f9')
                             sns.barplot(x=top_10_fark['Fark'], y=top_10_fark.index, palette=get_colors_by_value(top_10_fark['Fark']), ax=ax_cat)
-                            plt.title('FİNANSAL DEĞİŞİM (FARK - TL)', fontsize=14, fontweight='bold', color='#2c3e50')
-                            ax_cat.tick_params(colors='#2c3e50')
+                            plt.title('FİNANSAL DEĞİŞİM (FARK - TL)', fontsize=12, fontweight='bold', color='#2c3e50')
+                            ax_cat.tick_params(colors='#2c3e50', labelsize=8)
                             plt.axvline(0, color='#2c3e50', linewidth=1)
                             pdf.savefig(fig3, bbox_inches='tight')
                             plt.close(fig3)
