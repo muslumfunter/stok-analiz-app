@@ -108,9 +108,7 @@ else:
             df.columns = df.columns.str.strip()
             dosya_adi = f.name.replace(".xlsx", "")
             
-            # --- TARİH MANTIĞI GÜNCELLENDİ (Sadece ilk 2 rakam) ---
             kisa_tarih = dosya_adi[:2]
-            # ------------------------------------------------------
             
             df['Rapor_Tarihi'] = kisa_tarih
             liste.append(df)
@@ -166,6 +164,33 @@ else:
                     col_ozet2.metric("🔻 Toplam Kayıp (TL)", format_money(toplam_kayip_tl))
                     col_ozet3.metric("🟢 Toplam Buldum (Adet)", f"{toplam_buldum_adet:,.0f}")
                     col_ozet4.metric("🟢 Toplam Buldum (TL)", format_money(toplam_buldum_tl))
+                    
+                    # --- DEPO BAZLI ÖZET TABLOSU EKLENDİ ---
+                    if depo_col:
+                        st.markdown("**📍 Depo Bazlı Güncel Durum Özeti**")
+                        depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
+                        
+                        # Buldum değerlerini pozitif gösteriyoruz
+                        depo_ozet['Buldum_Adet'] = depo_ozet['Buldum_Adet'].abs()
+                        depo_ozet['Buldum_Tutar'] = depo_ozet['Buldum_Tutar'].abs()
+                        
+                        # Sütun isimlerini güzelleştirelim
+                        depo_ozet.rename(columns={
+                            depo_col: 'Depo Kodu',
+                            'Kayıp_Adet': 'Kayıp (Adet)',
+                            'Kayıp_Tutar': 'Kayıp (TL)',
+                            'Buldum_Adet': 'Buldum (Adet)',
+                            'Buldum_Tutar': 'Buldum (TL)'
+                        }, inplace=True)
+                        
+                        # Şık bir şekilde bastıralım
+                        st.dataframe(depo_ozet.style.format({
+                            'Kayıp (Adet)': "{:,.0f}",
+                            'Kayıp (TL)': format_money,
+                            'Buldum (Adet)': "{:,.0f}",
+                            'Buldum (TL)': format_money
+                        }), use_container_width=True, hide_index=True)
+                    # ---------------------------------------
                     
                     st.markdown("---")
 
@@ -224,7 +249,7 @@ else:
                     if degisim_df.empty:
                         st.info("💡 Seçili tarihler arasında bu kategorilerde herhangi bir stok sayım farkı hareketi (değişim) olmamıştır.")
                     else:
-                        st.dataframe(degisim_df.style.format({'Kayıp Değişimi (Adet)': "{:,.0f}", 'Buldum Değişimi (Adet)': "{:,.0f}", 'Net Adet Değişimi': "{:,.0f}", 'Net Tutar Değişimi (TL)': "{:,.0f}"}), use_container_width=True)
+                        st.dataframe(degisim_df.style.format({'Kayıp Değişimi (Adet)': "{:,.0f}", 'Buldum Değişimi (Adet)': "{:,.0f}", 'Net Adet Değişimi': "{:,.0f}", 'Net Tutar Değişimi (TL)': "{:,.0f}"}), use_container_width=True, hide_index=True)
 
                     fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(22, 12))
                     plt.subplots_adjust(hspace=0.4, wspace=0.3)
