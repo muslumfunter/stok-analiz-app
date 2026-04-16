@@ -39,10 +39,10 @@ st.markdown("""
         padding-bottom: 0.1rem !important;
     }
     div[data-testid="stMetricValue"] > div {
-        font-size: 1.6rem !important; /* Rakamları küçülttük */
+        font-size: 1.6rem !important; 
     }
     div[data-testid="stMetricLabel"] > label {
-        font-size: 0.9rem !important; /* Etiketleri küçülttük */
+        font-size: 0.9rem !important; 
     }
     </style>
 """, unsafe_allow_html=True)
@@ -170,19 +170,31 @@ else:
                     col_ozet3.metric("🟢 Toplam Buldum (Adet)", f"{toplam_buldum_adet:,.0f}")
                     col_ozet4.metric("🟢 Toplam Buldum (TL)", format_money(toplam_buldum_tl))
                     
+                    # --- YENİ EKLENEN: YAN YANA KOMPAKT DEPO KARTLARI ---
                     if depo_col:
-                        st.markdown("<br>**📍 Depo Bazlı Güncel Durum Özeti**", unsafe_allow_html=True)
+                        st.markdown("**📍 Depo Bazlı Güncel Durum Özeti**")
                         depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
                         
-                        for _, row in depo_ozet.iterrows():
+                        # Depo sayısı kadar sütun oluştur (Yan yana dizilmeleri için)
+                        depo_cols = st.columns(len(depo_ozet) if len(depo_ozet) > 0 else 1)
+                        
+                        for idx, row in depo_ozet.iterrows():
                             depo_ismi = row[depo_col]
-                            st.markdown(f"**🏢 Depo: {depo_ismi}**")
-                            c1, c2, c3, c4 = st.columns(4)
-                            c1.metric("🔻 Kayıp (Adet)", f"{row['Kayıp_Adet']:,.0f}")
-                            c2.metric("🔻 Kayıp (TL)", format_money(row['Kayıp_Tutar']))
-                            c3.metric("🟢 Buldum (Adet)", f"{abs(row['Buldum_Adet']):,.0f}")
-                            c4.metric("🟢 Buldum (TL)", format_money(abs(row['Buldum_Tutar'])))
-                            st.markdown("<hr style='border:1px dashed #bdc3c7; margin-top: 0.2rem; margin-bottom: 0.2rem;'>", unsafe_allow_html=True)
+                            d_kayip_adet = row['Kayıp_Adet']
+                            d_kayip_tl = row['Kayıp_Tutar']
+                            d_buldum_adet = abs(row['Buldum_Adet'])
+                            d_buldum_tl = abs(row['Buldum_Tutar'])
+                            
+                            # Akıllı ve şık HTML Kart Tasarımı
+                            with depo_cols[idx % len(depo_cols)]:
+                                st.markdown(f"""
+                                <div style="background-color:#ffffff; padding:10px 15px; border-radius:8px; border:1px solid #d1d8e0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom:10px;">
+                                    <div style="font-size:14px; font-weight:bold; color:#2c3e50; margin-bottom:6px;">🏢 Depo: {depo_ismi}</div>
+                                    <div style="font-size:13px; color:#c0392b; margin-bottom:4px;">🔻 Kayıp: <b>{d_kayip_adet:,.0f}</b> Adet <span style="font-size:12px; color:#7f8c8d;">({format_money(d_kayip_tl)} TL)</span></div>
+                                    <div style="font-size:13px; color:#1e8449;">🟢 Buldum: <b>{d_buldum_adet:,.0f}</b> Adet <span style="font-size:12px; color:#7f8c8d;">({format_money(d_buldum_tl)} TL)</span></div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                    # ----------------------------------------------------
 
                     st.markdown(f"**📉 Değişim Trendi**")
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
@@ -241,7 +253,6 @@ else:
                     else:
                         st.dataframe(degisim_df.style.format({'Kayıp Değişimi (Adet)': "{:,.0f}", 'Buldum Değişimi (Adet)': "{:,.0f}", 'Net Adet Değişimi': "{:,.0f}", 'Net Tutar Değişimi (TL)': "{:,.0f}"}), use_container_width=True, hide_index=True)
 
-                    # Matplotlib grafiklerini de küçülttük (16, 8)
                     fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(16, 8))
                     plt.subplots_adjust(hspace=0.4, wspace=0.3)
                     fig1.patch.set_facecolor('#f4f6f9')
