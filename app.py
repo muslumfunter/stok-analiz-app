@@ -165,34 +165,27 @@ else:
                     col_ozet3.metric("🟢 Toplam Buldum (Adet)", f"{toplam_buldum_adet:,.0f}")
                     col_ozet4.metric("🟢 Toplam Buldum (TL)", format_money(toplam_buldum_tl))
                     
-                    # --- DEPO BAZLI ÖZET TABLOSU EKLENDİ ---
+                    # --- DEPO BAZLI METRİK KARTLARI ---
                     if depo_col:
-                        st.markdown("**📍 Depo Bazlı Güncel Durum Özeti**")
+                        st.markdown("<br>**📍 Depo Bazlı Güncel Durum Özeti**", unsafe_allow_html=True)
                         depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
                         
-                        # Buldum değerlerini pozitif gösteriyoruz
-                        depo_ozet['Buldum_Adet'] = depo_ozet['Buldum_Adet'].abs()
-                        depo_ozet['Buldum_Tutar'] = depo_ozet['Buldum_Tutar'].abs()
-                        
-                        # Sütun isimlerini güzelleştirelim
-                        depo_ozet.rename(columns={
-                            depo_col: 'Depo Kodu',
-                            'Kayıp_Adet': 'Kayıp (Adet)',
-                            'Kayıp_Tutar': 'Kayıp (TL)',
-                            'Buldum_Adet': 'Buldum (Adet)',
-                            'Buldum_Tutar': 'Buldum (TL)'
-                        }, inplace=True)
-                        
-                        # Şık bir şekilde bastıralım
-                        st.dataframe(depo_ozet.style.format({
-                            'Kayıp (Adet)': "{:,.0f}",
-                            'Kayıp (TL)': format_money,
-                            'Buldum (Adet)': "{:,.0f}",
-                            'Buldum (TL)': format_money
-                        }), use_container_width=True, hide_index=True)
+                        for _, row in depo_ozet.iterrows():
+                            depo_ismi = row[depo_col]
+                            d_kayip_adet = row['Kayıp_Adet']
+                            d_kayip_tl = row['Kayıp_Tutar']
+                            d_buldum_adet = abs(row['Buldum_Adet'])
+                            d_buldum_tl = abs(row['Buldum_Tutar'])
+                            
+                            st.markdown(f"**🏢 Depo: {depo_ismi}**")
+                            c1, c2, c3, c4 = st.columns(4)
+                            c1.metric("🔻 Kayıp (Adet)", f"{d_kayip_adet:,.0f}")
+                            c2.metric("🔻 Kayıp (TL)", format_money(d_kayip_tl))
+                            c3.metric("🟢 Buldum (Adet)", f"{d_buldum_adet:,.0f}")
+                            c4.metric("🟢 Buldum (TL)", format_money(d_buldum_tl))
+                            # Depolar arasına şık bir kesik çizgi atıyoruz
+                            st.markdown("<hr style='border:1px dashed #bdc3c7; margin-top: 0.5rem; margin-bottom: 0.5rem;'>", unsafe_allow_html=True)
                     # ---------------------------------------
-                    
-                    st.markdown("---")
 
                     st.markdown(f"**📉 Değişim Trendi**")
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
