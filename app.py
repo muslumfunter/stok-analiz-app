@@ -11,7 +11,38 @@ import json
 # 1. SAYFA AYARLARI (Geniş Ekran Modu)
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
 
-st.title("📦 Operasyon Kalite - Sayım Farkı Dashboard")
+# ==========================================
+# 🎨 KOMPAKT TASARIM (BEYAZ BOŞLUKLARI DARALTMA)
+# ==========================================
+st.markdown("""
+    <style>
+    /* Ana sayfa üst boşluğunu daralt */
+    .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 1rem !important;
+    }
+    /* Başlıkların alt/üst boşluklarını kısalt */
+    h1, h2, h3, h4, h5, h6 {
+        margin-top: 0.2rem !important;
+        margin-bottom: 0.2rem !important;
+        padding-top: 0.2rem !important;
+        padding-bottom: 0.2rem !important;
+    }
+    /* Çizgilerin kapladığı alanı küçült */
+    hr {
+        margin-top: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    /* Metrik kutularının iç boşluklarını daralt */
+    div[data-testid="metric-container"] {
+        padding-top: 0.2rem !important;
+        padding-bottom: 0.2rem !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Başlığı daha kompakt bir formatta yazdırıyoruz
+st.markdown("### 📦 Operasyon Kalite - Sayım Farkı Dashboard")
 
 # ==========================================
 # 🔔 SLACK BOT AYARLARI
@@ -60,20 +91,17 @@ def label_bars(ax, is_money=False):
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 
 # 3. YATAY DOSYA YÜKLEME ALANI
-st.markdown("### 📂 Rapor Yükleme")
 col_info, col_upload = st.columns([1, 2])
 with col_info:
-    st.info("💡 Karşılaştırma yapılacak raporları seçin (Örn: 1504_DepoA, 1604_DepoA...). Analiz için en az 2 adet (Farklı tarihlere ait) dosya yüklemelisiniz.")
+    st.info("💡 Karşılaştırma yapılacak raporları seçin (Örn: 1504_DepoA, 1604_DepoA...). Analiz için en az 2 adet dosya yüklemelisiniz.")
 with col_upload:
     uploaded_files = st.file_uploader("Excel Dosyalarını Buraya Sürükleyin", type=['xlsx'], accept_multiple_files=True, label_visibility="collapsed")
-
-st.markdown("---")
 
 # 4. ANALİZ VE DASHBOARD
 if len(uploaded_files) < 2:
     st.warning("👈 Lütfen analizin yapılabilmesi için en az 2 adet Excel dosyasını yukarıdaki alana sürükleyip bırakın.")
 else:
-    with st.spinner("Tüm depolar taranıyor ve dinamik tablolar hazırlanıyor..."):
+    with st.spinner("Veriler işleniyor..."):
         liste = []
         for f in uploaded_files:
             df = pd.read_excel(f, header=0)
@@ -95,24 +123,21 @@ else:
         
         depo_col = next((c for c in df_master.columns if 'depo' in c.lower() or 'plant' in c.lower() or 'tesis' in c.lower() or 'lokasyon' in c.lower()), None)
         
-        st.success(f"✅ {len(uploaded_files)} adet dosya başarıyla işlendi ve birleştirildi!")
-        
         if depo_col:
             mevcut_depolar = sorted(df_master[depo_col].dropna().astype(str).unique().tolist())
-            st.markdown("### 🏢 Global Depo Filtresi")
+            # Filtre başlığını kaldırdık, doğrudan kutunun üstüne açıklama yazdık
             secilen_depolar = st.multiselect(
-                f"Analiz edilecek depoları seçin (Boş bırakırsanız {len(mevcut_depolar)} deponun konsolide toplamını görürsünüz):", 
+                f"🏢 **Global Depo Filtresi:** Analiz edilecek depoları seçin (Boş bırakırsanız {len(mevcut_depolar)} deponun konsolide toplamı yansır):", 
                 options=mevcut_depolar, 
                 default=mevcut_depolar
             )
-            
             if secilen_depolar:
                 aktif_df = df_master[df_master[depo_col].astype(str).isin(secilen_depolar)].copy()
             else:
                 aktif_df = df_master.iloc[0:0].copy() 
         else:
             aktif_df = df_master.copy()
-            st.info("💡 Excel dosyalarınızda 'Depo' veya 'Plant' isimli bir sütun bulunamadığı için depo ayırımı yapılamadı. Tüm veriler konsolide gösteriliyor.")
+            st.info("💡 Dosyalarınızda 'Depo' sütunu bulunamadığı için tüm veriler konsolide gösteriliyor.")
 
         if aktif_df.empty:
             st.warning("⚠️ Lütfen analizi görmek için yukarıdan en az bir adet depo seçimi yapınız.")
@@ -126,7 +151,7 @@ else:
                 
                 # --- TAB 1: ANA DASHBOARD ---
                 with tab1:
-                    st.subheader(f"📊 Tüm Depo Genel Durum Özeti (Güncel: {son_tarih})")
+                    st.markdown(f"**📊 Tüm Depo Genel Durum Özeti (Güncel: {son_tarih})**")
                     guncel_master_df = aktif_df[aktif_df['Rapor_Tarihi'] == son_tarih]
                     toplam_kayip_adet = guncel_master_df['Kayıp_Adet'].sum()
                     toplam_kayip_tl = guncel_master_df['Kayıp_Tutar'].sum()
@@ -141,7 +166,7 @@ else:
                     
                     st.markdown("---")
 
-                    st.subheader(f"D-1 vs D0 Değişim ({son_tarih})")
+                    st.markdown(f"**📉 D-1 vs D0 Değişim ({son_tarih})**")
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                     dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
 
@@ -155,7 +180,7 @@ else:
                             
                             fig_m_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Kayıp_Adet'], name='Kayıp', marker_color='#e74c3c', text=kayip_txt, textposition='auto'))
                             fig_m_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Buldum_Adet'], name='Buldum', marker_color='#2ecc71', text=buldum_txt, textposition='auto'))
-                            fig_m_web.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br>FARK ADET", margin=dict(t=50, b=0, l=0, r=0), height=250, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
+                            fig_m_web.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br>FARK ADET", margin=dict(t=50, b=0, l=0, r=0), height=220, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(fig_m_web, use_container_width=True, key=f"stok_adet_grafik_{i}")
 
                             fig_t_web = go.Figure()
@@ -164,11 +189,11 @@ else:
                             
                             fig_t_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Kayıp_Tutar'], name='Kayıp Tutar', marker_color='#e74c3c', text=k_tutar_txt, textposition='auto'))
                             fig_t_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Buldum_Tutar'], name='Buldum Tutar', marker_color='#2ecc71', text=b_tutar_txt, textposition='auto'))
-                            fig_t_web.update_layout(barmode='relative', title="TOPLAM FARK DEĞERİ (TL)", margin=dict(t=30, b=0, l=0, r=0), height=250, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
+                            fig_t_web.update_layout(barmode='relative', title="TOPLAM FARK DEĞERİ (TL)", margin=dict(t=30, b=0, l=0, r=0), height=220, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(fig_t_web, use_container_width=True, key=f"toplam_deger_grafik_{i}")
 
                     st.markdown("---")
-                    st.subheader("📋 Değişim Özeti (Sadece Hareketi Olan Kategoriler)")
+                    st.markdown("**📋 Değişim Özeti (Sadece Hareketi Olan Kategoriler)**")
                     ozet_pivot = dash_grouped.pivot_table(index='Ürün Tipi', columns='Rapor_Tarihi', values=['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat'], aggfunc='sum').fillna(0)
                     degisim_df = pd.DataFrame()
                     
@@ -226,7 +251,7 @@ else:
                 with tab2:
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.subheader(f"Güncel Kayıp En Yüksek İlk 10")
+                        st.markdown("**🔻 Güncel Kayıp En Yüksek İlk 10**")
                         top_10_stok_degeri = guncel_master_df.groupby('Buying Category Name')['Toplam Fiyat'].sum().sort_values(ascending=False).head(10)
                         
                         if not top_10_stok_degeri.empty:
@@ -245,7 +270,7 @@ else:
                             plt.close(fig2)
 
                     with col2:
-                        st.subheader("Kategori Bazlı Finansal Değişim (İlk vs Son)")
+                        st.markdown("**💸 Kategori Bazlı Finansal Değişim (İlk vs Son)**")
                         cat_pivot = aktif_df.pivot_table(index='Buying Category Name', columns='Rapor_Tarihi', values='Toplam Fiyat', aggfunc='sum').fillna(0)
                         if not cat_pivot.empty and len(cat_pivot.columns) > 1:
                             cat_pivot['Fark'] = cat_pivot.iloc[:, -1] - cat_pivot.iloc[:, 0]
@@ -267,7 +292,7 @@ else:
 
                 # --- TAB 3: DIVE DEEP ---
                 with tab3:
-                    st.subheader("Tüm Depo - Malzeme No (SKU) Bazlı Analiz")
+                    st.markdown("**🔍 Tüm Depo - Malzeme No (SKU) Bazlı Analiz**")
                     deep_df = aktif_df.copy()
                     deep_pivot = deep_df.pivot_table(index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values=['Stokta Bulunan', 'Birim Fiyat'], aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}).fillna(0)
                     
@@ -347,7 +372,7 @@ else:
                             st.dataframe(df_with_total.style.apply(light_theme_styling, axis=1).format({('Stokta Bulunan', tarih1): "{:.0f}", ('Stokta Bulunan', tarih2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}), use_container_width=True)
 
             st.markdown("---")
-            st.header("📥 Raporları İndir")
+            st.markdown("**📥 Raporları İndir**")
             col_pdf, col_excel = st.columns(2)
             with col_pdf: st.download_button("📄 PDF Raporu", data=pdf_buffer.getvalue(), file_name=f"Stok_Dashboard_{son_tarih.replace('/', '')}.pdf", use_container_width=True)
             with col_excel: 
