@@ -93,7 +93,7 @@ else:
         # --- AKILLI DEPO SÜTUNU BULUCU ---
         depo_col = next((c for c in df_master.columns if 'depo' in c.lower() or 'plant' in c.lower() or 'tesis' in c.lower() or 'lokasyon' in c.lower()), None)
         
-        # --- GLOBAL DEPO FİLTRESİ ---
+        # --- DEPO FİLTRESİ ---
         st.success(f"✅ {len(uploaded_files)} adet dosya başarıyla işlendi ve birleştirildi!")
         
         if depo_col:
