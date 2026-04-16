@@ -93,7 +93,7 @@ izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'I
 # 3. YATAY DOSYA YÜKLEME ALANI
 col_info, col_upload = st.columns([1, 2])
 with col_info:
-    st.info("💡 Karşılaştırma yapılacak raporları seçin (Örn: 1504_DepoA, 1604_DepoA...). Analiz için en az 2 adet dosya yüklemelisiniz.")
+    st.info("💡 Karşılaştırma yapılacak raporları seçin (Örn: 15_DepoA, 16_DepoA...). Analiz için en az 2 adet dosya yüklemelisiniz.")
 with col_upload:
     uploaded_files = st.file_uploader("Excel Dosyalarını Buraya Sürükleyin", type=['xlsx'], accept_multiple_files=True, label_visibility="collapsed")
 
@@ -107,7 +107,11 @@ else:
             df = pd.read_excel(f, header=0)
             df.columns = df.columns.str.strip()
             dosya_adi = f.name.replace(".xlsx", "")
-            kisa_tarih = f"{dosya_adi[:2]}/{dosya_adi[2:4]}"
+            
+            # --- TARİH MANTIĞI GÜNCELLENDİ (Sadece ilk 2 rakam) ---
+            kisa_tarih = dosya_adi[:2]
+            # ------------------------------------------------------
+            
             df['Rapor_Tarihi'] = kisa_tarih
             liste.append(df)
         
@@ -125,7 +129,6 @@ else:
         
         if depo_col:
             mevcut_depolar = sorted(df_master[depo_col].dropna().astype(str).unique().tolist())
-            # Filtre başlığını kaldırdık, doğrudan kutunun üstüne açıklama yazdık
             secilen_depolar = st.multiselect(
                 f"🏢 **Global Depo Filtresi:** Analiz edilecek depoları seçin (Boş bırakırsanız {len(mevcut_depolar)} deponun konsolide toplamı yansır):", 
                 options=mevcut_depolar, 
@@ -151,7 +154,7 @@ else:
                 
                 # --- TAB 1: ANA DASHBOARD ---
                 with tab1:
-                    st.markdown(f"**📊 Tüm Depo Genel Durum Özeti (Güncel: {son_tarih})**")
+                    st.markdown(f"**📊 Tüm Depo Genel Durum Özeti (Güncel: Gün {son_tarih})**")
                     guncel_master_df = aktif_df[aktif_df['Rapor_Tarihi'] == son_tarih]
                     toplam_kayip_adet = guncel_master_df['Kayıp_Adet'].sum()
                     toplam_kayip_tl = guncel_master_df['Kayıp_Tutar'].sum()
@@ -166,7 +169,7 @@ else:
                     
                     st.markdown("---")
 
-                    st.markdown(f"**📉 D-1 vs D0 Değişim ({son_tarih})**")
+                    st.markdown(f"**📉 Değişim Trendi**")
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                     dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
 
@@ -181,6 +184,7 @@ else:
                             fig_m_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Kayıp_Adet'], name='Kayıp', marker_color='#e74c3c', text=kayip_txt, textposition='auto'))
                             fig_m_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Buldum_Adet'], name='Buldum', marker_color='#2ecc71', text=buldum_txt, textposition='auto'))
                             fig_m_web.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br>FARK ADET", margin=dict(t=50, b=0, l=0, r=0), height=220, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
+                            fig_m_web.update_xaxes(title_text="Gün", title_font=dict(size=10))
                             st.plotly_chart(fig_m_web, use_container_width=True, key=f"stok_adet_grafik_{i}")
 
                             fig_t_web = go.Figure()
@@ -190,6 +194,7 @@ else:
                             fig_t_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Kayıp_Tutar'], name='Kayıp Tutar', marker_color='#e74c3c', text=k_tutar_txt, textposition='auto'))
                             fig_t_web.add_trace(go.Bar(x=urun_data['Rapor_Tarihi'], y=urun_data['Buldum_Tutar'], name='Buldum Tutar', marker_color='#2ecc71', text=b_tutar_txt, textposition='auto'))
                             fig_t_web.update_layout(barmode='relative', title="TOPLAM FARK DEĞERİ (TL)", margin=dict(t=30, b=0, l=0, r=0), height=220, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
+                            fig_t_web.update_xaxes(title_text="Gün", title_font=dict(size=10))
                             st.plotly_chart(fig_t_web, use_container_width=True, key=f"toplam_deger_grafik_{i}")
 
                     st.markdown("---")
@@ -232,6 +237,7 @@ else:
                             axes[0, i].set_title(f'{urun.upper()}\nNET FARK ADET', fontsize=11, fontweight='bold', color='#2c3e50')
                             axes[0, i].tick_params(colors='#2c3e50')
                             axes[0, i].set_facecolor('#f4f6f9')
+                            axes[0, i].set_xlabel("Gün")
                             label_bars(ax_m, is_money=False)
                             
                             t_colors = get_colors_by_value(urun_data['Toplam Fiyat'])
@@ -239,11 +245,12 @@ else:
                             axes[1, i].set_title(f'NET FARK DEĞERİ (TL)', fontsize=11, fontweight='bold', color='#2c3e50')
                             axes[1, i].tick_params(colors='#2c3e50')
                             axes[1, i].set_facecolor('#f4f6f9')
+                            axes[1, i].set_xlabel("Gün")
                             label_bars(ax_t, is_money=True)
                         else:
                             axes[0, i].set_title(f'{urun.upper()}\n(Veri Yok)', fontsize=11, fontweight='bold')
                             axes[1, i].set_title(f'(Veri Yok)', fontsize=11, fontweight='bold')
-                    plt.suptitle(f'SAYIM FARKI DASHBOARD - {son_tarih}\n(Kırmızı: Kayıp | Yeşil: Buldum)', fontsize=22, fontweight='bold', color='#2c3e50', y=0.98)
+                    plt.suptitle(f'SAYIM FARKI DASHBOARD - Gün {son_tarih}\n(Kırmızı: Kayıp | Yeşil: Buldum)', fontsize=22, fontweight='bold', color='#2c3e50', y=0.98)
                     pdf.savefig(fig1, bbox_inches='tight')
                     plt.close(fig1)
 
