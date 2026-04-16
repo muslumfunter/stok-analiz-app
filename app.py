@@ -62,7 +62,7 @@ izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'I
 # 3. DOSYA YÜKLEME ALANI
 with st.sidebar:
     st.header("📂 Dosya Yükleme")
-    st.info("Karşılaştırma yapılacak raporları seçin (Örn: 1504_DepoA, 1604_DepoA...)")
+    st.info("Karşılaştırma yapılacak raporları seçin (Örn: 4114_DepoA, 3514_DepoA...)")
     uploaded_files = st.file_uploader("Excel Dosyalarını Sürükleyin", type=['xlsx'], accept_multiple_files=True)
 
 # 4. ANALİZ VE DASHBOARD
@@ -100,7 +100,7 @@ else:
             mevcut_depolar = sorted(df_master[depo_col].dropna().astype(str).unique().tolist())
             st.markdown("### 🏢 Depo Filtresi")
             secilen_depolar = st.multiselect(
-                f"Analiz edilecek depoları seçin ({len(mevcut_depolar)} deponun konsolide toplamını görürsünüz):", 
+                f"Analiz edilecek depoları seçin deponun konsolide toplamını görürsünüz):", 
                 options=mevcut_depolar, 
                 default=mevcut_depolar
             )
