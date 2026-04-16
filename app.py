@@ -98,7 +98,7 @@ else:
         
         if depo_col:
             mevcut_depolar = sorted(df_master[depo_col].dropna().astype(str).unique().tolist())
-            st.markdown("### 🏢 Global Depo Filtresi")
+            st.markdown("### 🏢 Depo Filtresi")
             secilen_depolar = st.multiselect(
                 f"Analiz edilecek depoları seçin (Boş bırakırsanız {len(mevcut_depolar)} deponun konsolide toplamını görürsünüz):", 
                 options=mevcut_depolar, 
