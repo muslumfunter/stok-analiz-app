@@ -111,7 +111,6 @@ else:
         if depo_col:
             df_master[depo_col] = df_master[depo_col].astype(str).str.replace(r'\.0$', '', regex=True)
             mevcut_depolar = sorted(df_master[depo_col].unique().tolist())
-            # Filtreyi daha şık ve ince göster
             secilen_depolar = st.multiselect("🏢 **Global Depo Filtresi:**", options=mevcut_depolar, default=mevcut_depolar)
             aktif_df = df_master[df_master[depo_col].isin(secilen_depolar)].copy() if secilen_depolar else df_master.iloc[0:0].copy()
         else:
@@ -128,17 +127,15 @@ else:
                 with tab1:
                     guncel_master_df = aktif_df[aktif_df['Rapor_Tarihi'] == son_tarih]
                     
-                    # 4 Ana Metrik
                     c1, c2, c3, c4 = st.columns(4)
                     c1.metric(f"🔻 Toplam Kayıp (Adet) - Gün {son_tarih}", f"{guncel_master_df['Kayıp_Adet'].sum():,.0f}")
                     c2.metric(f"🔻 Toplam Kayıp (TL)", format_money(guncel_master_df['Kayıp_Tutar'].sum()))
                     c3.metric(f"🟢 Toplam Buldum (Adet)", f"{abs(guncel_master_df['Buldum_Adet'].sum()):,.0f}")
                     c4.metric(f"🟢 Toplam Buldum (TL)", format_money(abs(guncel_master_df['Buldum_Tutar'].sum())))
                     
-                    # --- YENİ YAN YANA DEPO ETİKETLERİ (FLEXBOX) ---
+                    # --- DÜZELTİLMİŞ YAN YANA DEPO ETİKETLERİ ---
                     if depo_col:
                         depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
-                        
                         html_etiketler = "<div style='display:flex; flex-wrap:wrap; gap:8px; margin-top:5px; margin-bottom:5px;'>"
                         for _, row in depo_ozet.iterrows():
                             d_kayip_a = row['Kayıp_Adet']
@@ -146,16 +143,12 @@ else:
                             d_buldum_a = abs(row['Buldum_Adet'])
                             d_buldum_t = format_money(abs(row['Buldum_Tutar']))
                             
-                            html_etiketler += f"""
-                            <div style="background-color:#ffffff; border: 1px solid #d1d8e0; border-radius: 4px; padding: 4px 10px; font-size:12px; color:#2c3e50; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                                <b>🏢 {row[depo_col]}</b> &nbsp;|&nbsp; 
-                                <span style="color:#c0392b;">🔻 K: <b>{d_kayip_a:,.0f}</b> <span style="font-size:10px;">({d_kayip_t})</span></span> &nbsp;|&nbsp; 
-                                <span style="color:#1e8449;">🟢 B: <b>{d_buldum_a:,.0f}</b> <span style="font-size:10px;">({d_buldum_t})</span></span>
-                            </div>
-                            """
+                            # Tüm HTML kodunu girinti (indentation) kullanmadan tek satıra aldım ki kod bloğuna dönüşmesin!
+                            html_etiketler += f"<div style='background-color:#ffffff; border: 1px solid #d1d8e0; border-radius: 4px; padding: 4px 10px; font-size:12px; color:#2c3e50; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'><b>🏢 {row[depo_col]}</b> &nbsp;|&nbsp; <span style='color:#c0392b;'>🔻 K: <b>{d_kayip_a:,.0f}</b> <span style='font-size:10px;'>({d_kayip_t})</span></span> &nbsp;|&nbsp; <span style='color:#1e8449;'>🟢 B: <b>{d_buldum_a:,.0f}</b> <span style='font-size:10px;'>({d_buldum_t})</span></span></div>"
+                        
                         html_etiketler += "</div>"
                         st.markdown(html_etiketler, unsafe_allow_html=True)
-                    # -----------------------------------------------
+                    # ---------------------------------------------
 
                     st.markdown("<hr style='margin: 0.2rem 0 !important;'>", unsafe_allow_html=True)
 
@@ -166,15 +159,13 @@ else:
                     for i, urun in enumerate(izlenecek_urunler):
                         u_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
                         with cols[i]:
-                            # Adet Grafiği (Daha da daraltıldı)
                             f_m = go.Figure()
                             f_m.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Kayıp_Adet'], name='Kayıp', marker_color='#e74c3c', text=u_data['Kayıp_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
                             f_m.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Buldum_Adet'], name='Buldum', marker_color='#2ecc71', text=u_data['Buldum_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
                             f_m.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br><span style='font-size:10px;'>FARK ADET</span>", margin=dict(t=35, b=0, l=0, r=0), height=140, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50', size=10))
-                            f_m.update_xaxes(visible=False) # X ekseni yazılarını gizleyerek alan kazandık
+                            f_m.update_xaxes(visible=False)
                             st.plotly_chart(f_m, use_container_width=True, key=f"s_a_{i}")
                             
-                            # Tutar Grafiği
                             f_t = go.Figure()
                             f_t.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Kayıp_Tutar'], name='Kayıp T', marker_color='#e74c3c', text=u_data['Kayıp_Tutar'].apply(lambda x: format_money(x) if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
                             f_t.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Buldum_Tutar'], name='Buldum T', marker_color='#2ecc71', text=u_data['Buldum_Tutar'].apply(lambda x: format_money(x) if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
@@ -182,7 +173,6 @@ else:
                             f_t.update_xaxes(title_text="Gün", title_font=dict(size=9), tickfont=dict(size=9))
                             st.plotly_chart(f_t, use_container_width=True, key=f"t_d_{i}")
 
-                    # Tabloyu EXPANDER içine aldık ki yer kaplamasın!
                     with st.expander("📋 Kategori Değişim Özeti Tablosu (Görüntülemek için tıklayın)", expanded=False):
                         ozet_pivot = dash_grouped.pivot_table(index='Ürün Tipi', columns='Rapor_Tarihi', values=['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat'], aggfunc='sum').fillna(0)
                         degisim_df = pd.DataFrame()
@@ -208,7 +198,6 @@ else:
                         if degisim_df.empty: st.info("Hareketi olan kategori bulunamadı.")
                         else: st.dataframe(degisim_df.style.format({'Kayıp Değişimi (Adet)': "{:,.0f}", 'Buldum Değişimi (Adet)': "{:,.0f}", 'Net Adet Değişimi': "{:,.0f}", 'Net Tutar Değişimi (TL)': "{:,.0f}"}), use_container_width=True, hide_index=True)
 
-                    # PDF Çizimi (Arka planda oluşturulur, ekranda yer kaplamaz)
                     fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(16, 8))
                     plt.subplots_adjust(hspace=0.4, wspace=0.3)
                     fig1.patch.set_facecolor('#f4f6f9')
@@ -312,7 +301,7 @@ else:
                                 return styles
                             st.dataframe(f_with_t.style.apply(lts, axis=1).format({('Stokta Bulunan', t1): "{:.0f}", ('Stokta Bulunan', t2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}), use_container_width=True)
 
-            # İndirme Butonları artık en alta ve kompakt
+            # İndirme Butonları
             c_empty, cpdf, cex = st.columns([6, 1, 1])
             with cpdf: st.download_button("📄 PDF İndir", data=pdf_buffer.getvalue(), file_name=f"Stok_Dashboard_{son_tarih}.pdf", use_container_width=True)
             with cex: 
