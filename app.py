@@ -103,7 +103,25 @@ else:
             
             # --- TAB 1: ANA DASHBOARD ---
             with tab1:
-                st.subheader(f"D-1 vs D0 Değişim({son_tarih})")
+                # --- YENİ EKLENEN: GENEL DURUM ÖZETİ ---
+                st.subheader(f"📊 Tüm Depo Genel Durum Özeti (Güncel: {son_tarih})")
+                guncel_master_df = df_master[df_master['Rapor_Tarihi'] == son_tarih]
+                
+                toplam_kayip_adet = guncel_master_df['Kayıp_Adet'].sum()
+                toplam_kayip_tl = guncel_master_df['Kayıp_Tutar'].sum()
+                toplam_buldum_adet = abs(guncel_master_df['Buldum_Adet'].sum()) # Eksi görünmemesi için mutlak değer
+                toplam_buldum_tl = abs(guncel_master_df['Buldum_Tutar'].sum())   # Eksi görünmemesi için mutlak değer
+                
+                col_ozet1, col_ozet2, col_ozet3, col_ozet4 = st.columns(4)
+                col_ozet1.metric("🔻 Toplam Kayıp (Adet)", f"{toplam_kayip_adet:,.0f}")
+                col_ozet2.metric("🔻 Toplam Kayıp (TL)", format_money(toplam_kayip_tl))
+                col_ozet3.metric("🟢 Toplam Buldum (Adet)", f"{toplam_buldum_adet:,.0f}")
+                col_ozet4.metric("🟢 Toplam Buldum (TL)", format_money(toplam_buldum_tl))
+                
+                st.markdown("---")
+                # ---------------------------------------
+
+                st.subheader(f"D-1 vs D0 Değişim ({son_tarih})")
                 dash_df = df_master[df_master['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                 dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
 
@@ -134,7 +152,6 @@ else:
                 ozet_pivot = dash_grouped.pivot_table(index='Ürün Tipi', columns='Rapor_Tarihi', values=['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat'], aggfunc='sum').fillna(0)
                 degisim_df = pd.DataFrame()
                 
-                # --- HATA ÇÖZÜMÜ BURADA (GÜVENLİK KONTROLÜ EKLENDİ) ---
                 if not ozet_pivot.empty and 'Kayıp_Adet' in ozet_pivot:
                     degisim_df['Ürün Tipi'] = ozet_pivot.index
                     degisim_df['Kayıp Değişimi (Adet)'] = (ozet_pivot['Kayıp_Adet'].iloc[:, -1] - ozet_pivot['Kayıp_Adet'].iloc[:, 0]).values
@@ -179,7 +196,7 @@ else:
                 plt.subplots_adjust(hspace=0.4, wspace=0.3)
                 for i, urun in enumerate(izlenecek_urunler):
                     urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
-                    if not urun_data.empty: # Grafik çizerken de boş veriyi koruyoruz
+                    if not urun_data.empty: 
                         m_colors = get_colors_by_value(urun_data['Stokta Bulunan'])
                         ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=m_colors)
                         axes[0, i].set_title(f'{urun.upper()}\nNET FARK ADET', fontsize=11, fontweight='bold')
@@ -363,7 +380,6 @@ else:
                         filtered_df_with_total.to_excel(writer, sheet_name='Filtreli_Analiz')
                     top_10_fark.to_excel(writer, sheet_name='Kategori_Ozeti')
                     
-                    # Eğer degisim_df boş değilse excel'e yaz
                     if not degisim_df.empty:
                         degisim_df.to_excel(writer, sheet_name='Genel_Degisim_Ozeti', index=False)
 
