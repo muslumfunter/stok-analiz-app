@@ -16,24 +16,15 @@ st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout=
 # ==========================================
 st.markdown("""
     <style>
-    /* En üstteki boşluğu ve Streamlit header'ını tamamen yok et */
     header { display: none !important; }
     .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; padding-left: 1.5rem !important; padding-right: 1.5rem !important; }
-    
-    /* Başlık ve çizgi boşluklarını sıfırla */
     h1, h2, h3 { margin-top: 0rem !important; margin-bottom: 0.2rem !important; padding-top: 0rem !important; padding-bottom: 0rem !important; }
     hr { margin-top: 0.2rem !important; margin-bottom: 0.2rem !important; border-top: 1px solid #d1d8e0;}
-    
-    /* Metrik Rakamlarını Küçült */
     div[data-testid="metric-container"] { padding-top: 0rem !important; padding-bottom: 0rem !important; }
     div[data-testid="stMetricValue"] > div { font-size: 1.4rem !important; font-weight: bold; }
     div[data-testid="stMetricLabel"] > label { font-size: 0.8rem !important; margin-bottom: -0.2rem !important;}
-    
-    /* Çoklu Seçim (Filtre) kutusunu daralt */
     .stMultiSelect { margin-bottom: -1rem !important; }
     div[data-baseweb="select"] > div { min-height: 30px !important; }
-    
-    /* Tab boşluklarını daralt */
     .stTabs { margin-top: -0.5rem !important; }
     .stTabs [data-baseweb="tab-list"] { gap: 2px; }
     .stTabs [data-baseweb="tab"] { height: 35px; padding: 0px 10px; }
@@ -79,7 +70,7 @@ def label_bars(ax, is_money=False):
 
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 
-# 3. YATAY VE ULTRA KOMPAKT DOSYA YÜKLEME
+# 3. YATAY DOSYA YÜKLEME
 col_info, col_upload = st.columns([1.5, 3])
 with col_info: 
     st.caption("💡 Karşılaştırma için en az 2 rapor yükleyin (Örn: 15_DepoA.xlsx, 16_DepoA.xlsx)")
@@ -109,7 +100,6 @@ else:
         
         depo_col = next((c for c in df_master.columns if any(x in c.lower() for x in ['depo', 'plant', 'tesis', 'lokasyon'])), None)
         
-        # --- ANA FİLTRE ---
         if depo_col:
             df_master[depo_col] = df_master[depo_col].astype(str).str.replace(r'\.0$', '', regex=True)
             mevcut_depolar = sorted(df_master[depo_col].unique().tolist())
@@ -121,7 +111,6 @@ else:
         if aktif_df.empty:
             st.warning("⚠️ Lütfen analizleri görmek için yukarıdan en az bir depo seçin.")
         else:
-            # 4. Sekme eklendi
             tab1, tab2, tab4, tab3 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🏭 Depolar (Top 20)", "🔍 Dive Deep"])
             pdf_buffer = io.BytesIO()
             excel_buffer = io.BytesIO()
@@ -243,7 +232,6 @@ else:
                             f3.update_layout(height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(f3, use_container_width=True)
 
-                # --- YENİ EKLENEN TAB 4: DEPOLAR (TOP 20) ---
                 with tab4:
                     if depo_col:
                         st.markdown(f"**🏭 Depo Bazında Güncel (Gün {son_tarih}) İlk 20 SKU Detayı**")
@@ -255,12 +243,10 @@ else:
                             depolar_listesi = sorted(guncel_tab4_df[depo_col].unique().tolist())
                             for d in depolar_listesi:
                                 st.markdown(f"<h5 style='color:#2c3e50; margin-top:20px !important; border-bottom:2px solid #3498db; padding-bottom:5px;'>🏢 {d} Deposu</h5>", unsafe_allow_html=True)
-                                
                                 d_data = guncel_tab4_df[guncel_tab4_df[depo_col] == d]
                                 sku_d = d_data.groupby(['malzeme no', 'Malzeme Tanımı', 'Ürün Tipi'])[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
                                 
                                 top_k = sku_d[sku_d['Kayıp_Adet'] > 0].sort_values(by='Kayıp_Tutar', ascending=False).head(20)
-                                
                                 top_b = sku_d[sku_d['Buldum_Adet'] < 0].copy()
                                 top_b['Buldum_Adet'] = top_b['Buldum_Adet'].abs()
                                 top_b['Buldum_Tutar'] = top_b['Buldum_Tutar'].abs()
@@ -271,21 +257,17 @@ else:
                                     st.markdown("<span style='color:#c0392b; font-weight:bold;'>🔻 İlk 20 Kayıp (Tutar Bazında)</span>", unsafe_allow_html=True)
                                     if not top_k.empty:
                                         st.dataframe(top_k[['malzeme no', 'Malzeme Tanımı', 'Kayıp_Adet', 'Kayıp_Tutar']].style.format({'Kayıp_Adet': "{:,.0f}", 'Kayıp_Tutar': format_money}), use_container_width=True, hide_index=True)
-                                    else:
-                                        st.info("Kayıp SKU bulunamadı.")
+                                    else: st.info("Kayıp SKU bulunamadı.")
                                         
                                 with col_b:
                                     st.markdown("<span style='color:#1e8449; font-weight:bold;'>🟢 İlk 20 Buldum (Tutar Bazında)</span>", unsafe_allow_html=True)
                                     if not top_b.empty:
                                         st.dataframe(top_b[['malzeme no', 'Malzeme Tanımı', 'Buldum_Adet', 'Buldum_Tutar']].style.format({'Buldum_Adet': "{:,.0f}", 'Buldum_Tutar': format_money}), use_container_width=True, hide_index=True)
-                                    else:
-                                        st.info("Buldum SKU bulunamadı.")
-                    else:
-                        st.info("💡 Excel dosyalarınızda 'Depo' sütunu bulunamadığı için bu sayfa gösterilemiyor.")
+                                    else: st.info("Buldum SKU bulunamadı.")
+                    else: st.info("💡 Excel dosyalarınızda 'Depo' sütunu bulunamadığı için bu sayfa gösterilemiyor.")
 
                 with tab3:
                     st.markdown("**🔍 Malzeme Bazlı Analiz (SKU)**")
-                    
                     if depo_col:
                         col_d, col_u, col_dr, col_s = st.columns(4)
                         sec_depo_dive = col_d.multiselect("🏢 Depo:", options=mevcut_depolar, default=mevcut_depolar, key="dive_depo_filter")
@@ -348,9 +330,51 @@ else:
                                 return styles
                             st.dataframe(f_with_t.style.apply(lts, axis=1).format({('Stokta Bulunan', t1): "{:.0f}", ('Stokta Bulunan', t2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}), use_container_width=True)
 
+            # --- EXCEL RAPORUNU OLUŞTURMA (HATA ÇÖZÜMÜ) ---
+            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                excel_dolu_mu = False
+                
+                # 1. Kategori Değişim Özeti
+                if 'degisim_df' in locals() and not degisim_df.empty:
+                    degisim_df.to_excel(writer, sheet_name='Kategori_Degisim', index=False)
+                    excel_dolu_mu = True
+                
+                # 2. Dive Deep Filtreli Data
+                if 'f_with_t' in locals() and not f_with_t.empty:
+                    f_with_t.to_excel(writer, sheet_name='Dive_Deep_Analizi')
+                    excel_dolu_mu = True
+                    
+                # 3. Depo Bazlı Top 20 Kayıp/Buldum
+                if 'guncel_tab4_df' in locals() and not guncel_tab4_df.empty:
+                    depo_liste_excel = []
+                    for d in depolar_listesi:
+                        d_data = guncel_tab4_df[guncel_tab4_df[depo_col] == d]
+                        sku_d = d_data.groupby(['malzeme no', 'Malzeme Tanımı', 'Ürün Tipi'])[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
+                        
+                        t_k = sku_d[sku_d['Kayıp_Adet'] > 0].sort_values(by='Kayıp_Tutar', ascending=False).head(20).copy()
+                        if not t_k.empty:
+                            t_k['Depo'] = d
+                            t_k['Durum'] = 'KAYIP'
+                            depo_liste_excel.append(t_k[['Depo', 'Durum', 'Ürün Tipi', 'malzeme no', 'Malzeme Tanımı', 'Kayıp_Adet', 'Kayıp_Tutar']].rename(columns={'Kayıp_Adet': 'Adet', 'Kayıp_Tutar': 'Tutar (TL)'}))
+                            
+                        t_b = sku_d[sku_d['Buldum_Adet'] < 0].copy()
+                        if not t_b.empty:
+                            t_b['Buldum_Adet'] = t_b['Buldum_Adet'].abs()
+                            t_b['Buldum_Tutar'] = t_b['Buldum_Tutar'].abs()
+                            t_b = t_b.sort_values(by='Buldum_Tutar', ascending=False).head(20)
+                            t_b['Depo'] = d
+                            t_b['Durum'] = 'BULDUM'
+                            depo_liste_excel.append(t_b[['Depo', 'Durum', 'Ürün Tipi', 'malzeme no', 'Malzeme Tanımı', 'Buldum_Adet', 'Buldum_Tutar']].rename(columns={'Buldum_Adet': 'Adet', 'Buldum_Tutar': 'Tutar (TL)'}))
+                            
+                    if depo_liste_excel:
+                        final_depo_excel = pd.concat(depo_liste_excel, ignore_index=True)
+                        final_depo_excel.to_excel(writer, sheet_name='Depolar_Top20', index=False)
+                        excel_dolu_mu = True
+                        
+                if not excel_dolu_mu:
+                    pd.DataFrame({'Bilgi': ['Seçili filtrelere uygun veri bulunamadı.']}).to_excel(writer, sheet_name='Bilgi', index=False)
+
             # İndirme Butonları
             c_empty, cpdf, cex = st.columns([6, 1, 1])
             with cpdf: st.download_button("📄 PDF İndir", data=pdf_buffer.getvalue(), file_name=f"Stok_Dashboard_{son_tarih}.pdf", use_container_width=True)
-            with cex: 
-                try: st.download_button("📊 Excel İndir", data=excel_buffer.getvalue(), file_name=f"Stok_Detay_{son_tarih}.xlsx", use_container_width=True)
-                except: st.download_button("📊 Excel İndir", data=b"", file_name=f"Stok_Detay_Bos.xlsx", use_container_width=True)
+            with cex: st.download_button("📊 Excel İndir", data=excel_buffer.getvalue(), file_name=f"Stok_Detay_{son_tarih}.xlsx", use_container_width=True)
