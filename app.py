@@ -109,19 +109,20 @@ else:
         
         depo_col = next((c for c in df_master.columns if any(x in c.lower() for x in ['depo', 'plant', 'tesis', 'lokasyon'])), None)
         
-        # --- TAB 1 VE 2 İÇİN ANA FİLTRE ---
+        # --- ANA FİLTRE ---
         if depo_col:
             df_master[depo_col] = df_master[depo_col].astype(str).str.replace(r'\.0$', '', regex=True)
             mevcut_depolar = sorted(df_master[depo_col].unique().tolist())
-            secilen_depolar = st.multiselect("🏢 **Ana Dashboard Depo Filtresi (Sadece Tab 1 ve Tab 2'yi etkiler):**", options=mevcut_depolar, default=mevcut_depolar)
+            secilen_depolar = st.multiselect("🏢 **Ana Dashboard Depo Filtresi:**", options=mevcut_depolar, default=mevcut_depolar)
             aktif_df = df_master[df_master[depo_col].isin(secilen_depolar)].copy() if secilen_depolar else df_master.iloc[0:0].copy()
         else:
             aktif_df = df_master.copy()
 
         if aktif_df.empty:
-            st.warning("⚠️ Lütfen Tab 1 ve Tab 2'yi görmek için yukarıdan en az bir depo seçin.")
+            st.warning("⚠️ Lütfen analizleri görmek için yukarıdan en az bir depo seçin.")
         else:
-            tab1, tab2, tab3 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🔍 Dive Deep"])
+            # 4. Sekme eklendi
+            tab1, tab2, tab4, tab3 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🏭 Depolar (Top 20)", "🔍 Dive Deep"])
             pdf_buffer = io.BytesIO()
             excel_buffer = io.BytesIO()
 
@@ -242,14 +243,51 @@ else:
                             f3.update_layout(height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(f3, use_container_width=True)
 
-                # --- TAB 3: DIVE DEEP (BAĞIMSIZ FİLTRE MİMARİSİ) ---
+                # --- YENİ EKLENEN TAB 4: DEPOLAR (TOP 20) ---
+                with tab4:
+                    if depo_col:
+                        st.markdown(f"**🏭 Depo Bazında Güncel (Gün {son_tarih}) İlk 20 SKU Detayı**")
+                        guncel_tab4_df = aktif_df[aktif_df['Rapor_Tarihi'] == son_tarih]
+                        
+                        if guncel_tab4_df.empty:
+                            st.info("💡 Seçili tarihte veri bulunamadı.")
+                        else:
+                            depolar_listesi = sorted(guncel_tab4_df[depo_col].unique().tolist())
+                            for d in depolar_listesi:
+                                st.markdown(f"<h5 style='color:#2c3e50; margin-top:20px !important; border-bottom:2px solid #3498db; padding-bottom:5px;'>🏢 {d} Deposu</h5>", unsafe_allow_html=True)
+                                
+                                d_data = guncel_tab4_df[guncel_tab4_df[depo_col] == d]
+                                sku_d = d_data.groupby(['malzeme no', 'Malzeme Tanımı', 'Ürün Tipi'])[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
+                                
+                                top_k = sku_d[sku_d['Kayıp_Adet'] > 0].sort_values(by='Kayıp_Tutar', ascending=False).head(20)
+                                
+                                top_b = sku_d[sku_d['Buldum_Adet'] < 0].copy()
+                                top_b['Buldum_Adet'] = top_b['Buldum_Adet'].abs()
+                                top_b['Buldum_Tutar'] = top_b['Buldum_Tutar'].abs()
+                                top_b = top_b.sort_values(by='Buldum_Tutar', ascending=False).head(20)
+                                
+                                col_k, col_b = st.columns(2)
+                                with col_k:
+                                    st.markdown("<span style='color:#c0392b; font-weight:bold;'>🔻 İlk 20 Kayıp (Tutar Bazında)</span>", unsafe_allow_html=True)
+                                    if not top_k.empty:
+                                        st.dataframe(top_k[['malzeme no', 'Malzeme Tanımı', 'Kayıp_Adet', 'Kayıp_Tutar']].style.format({'Kayıp_Adet': "{:,.0f}", 'Kayıp_Tutar': format_money}), use_container_width=True, hide_index=True)
+                                    else:
+                                        st.info("Kayıp SKU bulunamadı.")
+                                        
+                                with col_b:
+                                    st.markdown("<span style='color:#1e8449; font-weight:bold;'>🟢 İlk 20 Buldum (Tutar Bazında)</span>", unsafe_allow_html=True)
+                                    if not top_b.empty:
+                                        st.dataframe(top_b[['malzeme no', 'Malzeme Tanımı', 'Buldum_Adet', 'Buldum_Tutar']].style.format({'Buldum_Adet': "{:,.0f}", 'Buldum_Tutar': format_money}), use_container_width=True, hide_index=True)
+                                    else:
+                                        st.info("Buldum SKU bulunamadı.")
+                    else:
+                        st.info("💡 Excel dosyalarınızda 'Depo' sütunu bulunamadığı için bu sayfa gösterilemiyor.")
+
                 with tab3:
                     st.markdown("**🔍 Malzeme Bazlı Analiz (SKU)**")
                     
-                    # Filtreleri tek satırda yan yana diziyoruz
                     if depo_col:
                         col_d, col_u, col_dr, col_s = st.columns(4)
-                        # Tab 3 için ÖZEL depo filtresi (Sadece df_master'dan beslenir)
                         sec_depo_dive = col_d.multiselect("🏢 Depo:", options=mevcut_depolar, default=mevcut_depolar, key="dive_depo_filter")
                         deep_base_df = df_master[df_master[depo_col].isin(sec_depo_dive)].copy()
                     else:
