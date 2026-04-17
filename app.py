@@ -108,16 +108,18 @@ else:
         son_tarih = df_master['Rapor_Tarihi'].iloc[-1]
         
         depo_col = next((c for c in df_master.columns if any(x in c.lower() for x in ['depo', 'plant', 'tesis', 'lokasyon'])), None)
+        
+        # --- TAB 1 VE 2 İÇİN ANA FİLTRE ---
         if depo_col:
             df_master[depo_col] = df_master[depo_col].astype(str).str.replace(r'\.0$', '', regex=True)
             mevcut_depolar = sorted(df_master[depo_col].unique().tolist())
-            secilen_depolar = st.multiselect("🏢 **Global Depo Filtresi:**", options=mevcut_depolar, default=mevcut_depolar)
+            secilen_depolar = st.multiselect("🏢 **Ana Dashboard Depo Filtresi (Sadece Tab 1 ve Tab 2'yi etkiler):**", options=mevcut_depolar, default=mevcut_depolar)
             aktif_df = df_master[df_master[depo_col].isin(secilen_depolar)].copy() if secilen_depolar else df_master.iloc[0:0].copy()
         else:
             aktif_df = df_master.copy()
 
         if aktif_df.empty:
-            st.warning("⚠️ Lütfen en az bir depo seçin.")
+            st.warning("⚠️ Lütfen Tab 1 ve Tab 2'yi görmek için yukarıdan en az bir depo seçin.")
         else:
             tab1, tab2, tab3 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🔍 Dive Deep"])
             pdf_buffer = io.BytesIO()
@@ -133,7 +135,6 @@ else:
                     c3.metric(f"🟢 Toplam Buldum (Adet)", f"{abs(guncel_master_df['Buldum_Adet'].sum()):,.0f}")
                     c4.metric(f"🟢 Toplam Buldum (TL)", format_money(abs(guncel_master_df['Buldum_Tutar'].sum())))
                     
-                    # --- DÜZELTİLMİŞ YAN YANA DEPO ETİKETLERİ ---
                     if depo_col:
                         depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
                         html_etiketler = "<div style='display:flex; flex-wrap:wrap; gap:8px; margin-top:5px; margin-bottom:5px;'>"
@@ -142,13 +143,9 @@ else:
                             d_kayip_t = format_money(row['Kayıp_Tutar'])
                             d_buldum_a = abs(row['Buldum_Adet'])
                             d_buldum_t = format_money(abs(row['Buldum_Tutar']))
-                            
-                            # Tüm HTML kodunu girinti (indentation) kullanmadan tek satıra aldım ki kod bloğuna dönüşmesin!
                             html_etiketler += f"<div style='background-color:#ffffff; border: 1px solid #d1d8e0; border-radius: 4px; padding: 4px 10px; font-size:12px; color:#2c3e50; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'><b>🏢 {row[depo_col]}</b> &nbsp;|&nbsp; <span style='color:#c0392b;'>🔻 K: <b>{d_kayip_a:,.0f}</b> <span style='font-size:10px;'>({d_kayip_t})</span></span> &nbsp;|&nbsp; <span style='color:#1e8449;'>🟢 B: <b>{d_buldum_a:,.0f}</b> <span style='font-size:10px;'>({d_buldum_t})</span></span></div>"
-                        
                         html_etiketler += "</div>"
                         st.markdown(html_etiketler, unsafe_allow_html=True)
-                    # ---------------------------------------------
 
                     st.markdown("<hr style='margin: 0.2rem 0 !important;'>", unsafe_allow_html=True)
 
@@ -163,7 +160,7 @@ else:
                             f_m.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Kayıp_Adet'], name='Kayıp', marker_color='#e74c3c', text=u_data['Kayıp_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
                             f_m.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Buldum_Adet'], name='Buldum', marker_color='#2ecc71', text=u_data['Buldum_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
                             f_m.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br><span style='font-size:10px;'>FARK ADET</span>", margin=dict(t=35, b=0, l=0, r=0), height=140, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50', size=10))
-                            f_m.update_xaxes(visible=False)
+                            f_m.update_xaxes(visible=False) 
                             st.plotly_chart(f_m, use_container_width=True, key=f"s_a_{i}")
                             
                             f_t = go.Figure()
@@ -245,9 +242,22 @@ else:
                             f3.update_layout(height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(f3, use_container_width=True)
 
+                # --- TAB 3: DIVE DEEP (BAĞIMSIZ FİLTRE MİMARİSİ) ---
                 with tab3:
                     st.markdown("**🔍 Malzeme Bazlı Analiz (SKU)**")
-                    dp = aktif_df.pivot_table(index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values=['Stokta Bulunan', 'Birim Fiyat'], aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}).fillna(0)
+                    
+                    # Filtreleri tek satırda yan yana diziyoruz
+                    if depo_col:
+                        col_d, col_u, col_dr, col_s = st.columns(4)
+                        # Tab 3 için ÖZEL depo filtresi (Sadece df_master'dan beslenir)
+                        sec_depo_dive = col_d.multiselect("🏢 Depo:", options=mevcut_depolar, default=mevcut_depolar, key="dive_depo_filter")
+                        deep_base_df = df_master[df_master[depo_col].isin(sec_depo_dive)].copy()
+                    else:
+                        col_u, col_dr, col_s = st.columns(3)
+                        deep_base_df = df_master.copy()
+                        
+                    dp = deep_base_df.pivot_table(index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values=['Stokta Bulunan', 'Birim Fiyat'], aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}).fillna(0)
+                    
                     if len(dp.columns.levels[1]) > 1:
                         dp[('Analiz', 'Fark_Adet')] = dp['Stokta Bulunan'].iloc[:, -1] - dp['Stokta Bulunan'].iloc[:, 0]
                         def b_d(r):
@@ -261,11 +271,10 @@ else:
                         df_f = dp[(dp['Stokta Bulunan'].iloc[:, -1] != 0) | (dp[('Analiz', 'Fark_Adet')] != 0)].sort_values(by=[('Analiz', 'Güncel_Tutar_TL')], ascending=False)
                         if 'Birim Fiyat' in df_f.columns.get_level_values(0): df_f = df_f.drop(columns=['Birim Fiyat'])
                         
-                        cf1, cf2, cf3 = st.columns(3)
-                        st_i = cf1.multiselect("📊 Ürün Tipi:", options=sorted(df_f.index.get_level_values('Ürün Tipi').unique()))
+                        st_i = col_u.multiselect("📊 Ürün Tipi:", options=sorted(df_f.index.get_level_values('Ürün Tipi').unique()))
                         m_d = df_f[('Analiz', 'DURUM')].unique().tolist()
-                        s_d = cf2.multiselect("📌 Durum:", options=m_d, default=[d for d in ["KAYIP", "BULDUM", "EŞİTLENDİ", "SABİT"] if d in m_d])
-                        s_sku = cf3.multiselect("🔍 Malzeme No:", options=df_f.index.get_level_values('malzeme no').unique())
+                        s_d = col_dr.multiselect("📌 Durum:", options=m_d, default=[d for d in ["KAYIP", "BULDUM", "EŞİTLENDİ", "SABİT"] if d in m_d])
+                        s_sku = col_s.multiselect("🔍 Malzeme No:", options=df_f.index.get_level_values('malzeme no').unique())
                         
                         f_df = df_f.copy()
                         if st_i: f_df = f_df[f_df.index.get_level_values('Ürün Tipi').isin(st_i)]
