@@ -160,31 +160,7 @@ else:
                             f_t.update_xaxes(title_text="Gün", title_font=dict(size=9), tickfont=dict(size=9))
                             st.plotly_chart(f_t, use_container_width=True, key=f"t_d_{i}")
 
-                    with st.expander("📋 Kategori Değişim Özeti Tablosu (Görüntülemek için tıklayın)", expanded=False):
-                        ozet_pivot = dash_grouped.pivot_table(index='Ürün Tipi', columns='Rapor_Tarihi', values=['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat'], aggfunc='sum').fillna(0)
-                        degisim_df = pd.DataFrame()
-                        if not ozet_pivot.empty and 'Kayıp_Adet' in ozet_pivot:
-                            degisim_df['Ürün Tipi'] = ozet_pivot.index
-                            degisim_df['Kayıp Değişimi (Adet)'] = (ozet_pivot['Kayıp_Adet'].iloc[:, -1] - ozet_pivot['Kayıp_Adet'].iloc[:, 0]).values
-                            degisim_df['Buldum Değişimi (Adet)'] = (ozet_pivot['Buldum_Adet'].iloc[:, -1] - ozet_pivot['Buldum_Adet'].iloc[:, 0]).values
-                            degisim_df['Net Adet Değişimi'] = (ozet_pivot['Stokta Bulunan'].iloc[:, -1] - ozet_pivot['Stokta Bulunan'].iloc[:, 0]).values
-                            degisim_df['Net Tutar Değişimi (TL)'] = (ozet_pivot['Toplam Fiyat'].iloc[:, -1] - ozet_pivot['Toplam Fiyat'].iloc[:, 0]).values
-                            degisim_df = degisim_df[(degisim_df['Kayıp Değişimi (Adet)'] != 0) | (degisim_df['Buldum Değişimi (Adet)'] != 0) | (degisim_df['Net Adet Değişimi'] != 0)].copy()
-
-                        if not degisim_df.empty and SLACK_WEBHOOK_URL != "":
-                            kritik_degisimler = degisim_df[degisim_df['Ürün Tipi'].str.lower().isin([u.lower() for u in slack_bildirim_gidecek_urunler])]
-                            if not kritik_degisimler.empty:
-                                mesaj_icerigi = "*🚨 KRİTİK ÜRÜN STOK ALARMI!*\n"
-                                for _, row in kritik_degisimler.iterrows():
-                                    urun = row['Ürün Tipi'].upper()
-                                    net_degisim = row['Net Adet Değişimi']
-                                    if net_degisim > 0: mesaj_icerigi += f"🔻 *{urun}:* {net_degisim:.0f} Adet YENİ KAYIP\n"
-                                    elif net_degisim < 0: mesaj_icerigi += f"🟢 *{urun}:* {abs(net_degisim):.0f} Adet BULDUM\n"
-                                slack_bildirimi_gonder(mesaj_icerigi)
-
-                        if degisim_df.empty: st.info("Hareketi olan kategori bulunamadı.")
-                        else: st.dataframe(degisim_df.style.format({'Kayıp Değişimi (Adet)': "{:,.0f}", 'Buldum Değişimi (Adet)': "{:,.0f}", 'Net Adet Değişimi': "{:,.0f}", 'Net Tutar Değişimi (TL)': "{:,.0f}"}), use_container_width=True, hide_index=True)
-
+                    # --- PDF SAYFA 1 ÇİZİMİ ---
                     fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(16, 8))
                     plt.subplots_adjust(hspace=0.4, wspace=0.3)
                     fig1.patch.set_facecolor('#f4f6f9')
@@ -219,18 +195,44 @@ else:
                         st.markdown("**🔻 Güncel Kayıp En Yüksek İlk 10**")
                         t10_s = guncel_master_df.groupby('Buying Category Name')['Toplam Fiyat'].sum().sort_values(ascending=False).head(10)
                         if not t10_s.empty:
+                            # Web Versiyonu
                             f2 = go.Figure(go.Bar(x=t10_s.values, y=t10_s.index, orientation='h', marker=dict(color=t10_s.values, colorscale='Reds')))
                             f2.update_layout(yaxis={'categoryorder':'total ascending'}, height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(f2, use_container_width=True)
+                            
+                            # --- PDF SAYFA 2 ÇİZİMİ (RESTORE EDİLDİ) ---
+                            fig2, ax_top = plt.subplots(figsize=(8, 6))
+                            fig2.patch.set_facecolor('#f4f6f9')
+                            ax_top.set_facecolor('#f4f6f9')
+                            sns.barplot(x=t10_s.values, y=t10_s.index, palette='Reds_r', ax=ax_top)
+                            plt.title('GÜNCEL SAYIM AÇIĞI (TL)', fontsize=12, fontweight='bold', color='#2c3e50')
+                            ax_top.tick_params(colors='#2c3e50', labelsize=8)
+                            label_bars(ax_top, is_money=True)
+                            pdf.savefig(fig2, bbox_inches='tight')
+                            plt.close(fig2)
+
                     with col2:
                         st.markdown("**💸 Finansal Değişim (İlk vs Son)**")
                         cp = aktif_df.pivot_table(index='Buying Category Name', columns='Rapor_Tarihi', values='Toplam Fiyat', aggfunc='sum').fillna(0)
                         if len(cp.columns) > 1:
                             cp['Fark'] = cp.iloc[:, -1] - cp.iloc[:, 0]
                             t10_f = cp.sort_values(by='Fark', key=abs, ascending=False).head(10)
+                            
+                            # Web Versiyonu
                             f3 = go.Figure(go.Bar(x=t10_f['Fark'], y=t10_f.index, orientation='h', marker_color=get_colors_by_value(t10_f['Fark'])))
                             f3.update_layout(height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(f3, use_container_width=True)
+                            
+                            # --- PDF SAYFA 3 ÇİZİMİ (RESTORE EDİLDİ) ---
+                            fig3, ax_cat = plt.subplots(figsize=(8, 6))
+                            fig3.patch.set_facecolor('#f4f6f9')
+                            ax_cat.set_facecolor('#f4f6f9')
+                            sns.barplot(x=t10_f['Fark'], y=t10_f.index, palette=get_colors_by_value(t10_f['Fark']), ax=ax_cat)
+                            plt.title('FİNANSAL DEĞİŞİM (FARK - TL)', fontsize=12, fontweight='bold', color='#2c3e50')
+                            ax_cat.tick_params(colors='#2c3e50', labelsize=8)
+                            plt.axvline(0, color='#2c3e50', linewidth=1)
+                            pdf.savefig(fig3, bbox_inches='tight')
+                            plt.close(fig3)
 
                 with tab4:
                     if depo_col:
@@ -330,33 +332,25 @@ else:
                                 return styles
                             st.dataframe(f_with_t.style.apply(lts, axis=1).format({('Stokta Bulunan', t1): "{:.0f}", ('Stokta Bulunan', t2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}), use_container_width=True)
 
-            # --- EXCEL RAPORUNU OLUŞTURMA (HATA ÇÖZÜMÜ) ---
+            # --- EXCEL RAPORUNU OLUŞTURMA ---
             with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                 excel_dolu_mu = False
-                
-                # 1. Kategori Değişim Özeti
                 if 'degisim_df' in locals() and not degisim_df.empty:
                     degisim_df.to_excel(writer, sheet_name='Kategori_Degisim', index=False)
                     excel_dolu_mu = True
-                
-                # 2. Dive Deep Filtreli Data
                 if 'f_with_t' in locals() and not f_with_t.empty:
                     f_with_t.to_excel(writer, sheet_name='Dive_Deep_Analizi')
                     excel_dolu_mu = True
-                    
-                # 3. Depo Bazlı Top 20 Kayıp/Buldum
                 if 'guncel_tab4_df' in locals() and not guncel_tab4_df.empty:
                     depo_liste_excel = []
                     for d in depolar_listesi:
                         d_data = guncel_tab4_df[guncel_tab4_df[depo_col] == d]
                         sku_d = d_data.groupby(['malzeme no', 'Malzeme Tanımı', 'Ürün Tipi'])[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
-                        
                         t_k = sku_d[sku_d['Kayıp_Adet'] > 0].sort_values(by='Kayıp_Tutar', ascending=False).head(20).copy()
                         if not t_k.empty:
                             t_k['Depo'] = d
                             t_k['Durum'] = 'KAYIP'
                             depo_liste_excel.append(t_k[['Depo', 'Durum', 'Ürün Tipi', 'malzeme no', 'Malzeme Tanımı', 'Kayıp_Adet', 'Kayıp_Tutar']].rename(columns={'Kayıp_Adet': 'Adet', 'Kayıp_Tutar': 'Tutar (TL)'}))
-                            
                         t_b = sku_d[sku_d['Buldum_Adet'] < 0].copy()
                         if not t_b.empty:
                             t_b['Buldum_Adet'] = t_b['Buldum_Adet'].abs()
@@ -365,12 +359,10 @@ else:
                             t_b['Depo'] = d
                             t_b['Durum'] = 'BULDUM'
                             depo_liste_excel.append(t_b[['Depo', 'Durum', 'Ürün Tipi', 'malzeme no', 'Malzeme Tanımı', 'Buldum_Adet', 'Buldum_Tutar']].rename(columns={'Buldum_Adet': 'Adet', 'Buldum_Tutar': 'Tutar (TL)'}))
-                            
                     if depo_liste_excel:
                         final_depo_excel = pd.concat(depo_liste_excel, ignore_index=True)
                         final_depo_excel.to_excel(writer, sheet_name='Depolar_Top20', index=False)
                         excel_dolu_mu = True
-                        
                 if not excel_dolu_mu:
                     pd.DataFrame({'Bilgi': ['Seçili filtrelere uygun veri bulunamadı.']}).to_excel(writer, sheet_name='Bilgi', index=False)
 
