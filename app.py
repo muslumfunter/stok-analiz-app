@@ -66,7 +66,6 @@ with col_upload:
 
 # 4. ANALİZ VE DASHBOARD
 if len(uploaded_files) < 2:
-    st.warning("👈 Analiz için en az 2 adet Excel dosyasını yukarıdaki alana yükleyin.")
 else:
     with st.spinner("Veriler işleniyor..."):
         liste = []
