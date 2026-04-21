@@ -5,8 +5,6 @@ import seaborn as sns
 from matplotlib.backends.backend_pdf import PdfPages
 import plotly.graph_objects as go
 import io
-import requests
-import json
 import os
 
 # 1. SAYFA AYARLARI (Geniş Ekran Modu)
@@ -34,19 +32,6 @@ st.markdown("""
 
 st.markdown("### 📦 Operasyon Kalite - Sayım Farkı Dashboard")
 
-# ==========================================
-# 🔔 SLACK BOT AYARLARI
-# ==========================================
-slack_bildirim_gidecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu'] 
-SLACK_WEBHOOK_URL = "" 
-
-def slack_bildirimi_gonder(mesaj):
-    if not SLACK_WEBHOOK_URL or SLACK_WEBHOOK_URL == "": return 
-    try:
-        payload = {"text": mesaj}
-        requests.post(SLACK_WEBHOOK_URL, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
-    except Exception as e: print(f"Slack hatası: {e}")
-
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
     try:
@@ -70,7 +55,7 @@ def label_bars(ax, is_money=False):
             ax.annotate(label, (p.get_x() + p.get_width() / 2., val), ha='center', va='center', xytext=(0, 6), textcoords='offset points', fontsize=7, fontweight='bold', color="#2c3e50")
 
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
-TRACK_FILE = "takip_listesi.csv" # Özel Takip Dosyası
+TRACK_FILE = "takip_listesi.csv" 
 
 # 3. YATAY DOSYA YÜKLEME
 col_info, col_upload = st.columns([1.5, 3])
@@ -113,7 +98,6 @@ else:
         if aktif_df.empty:
             st.warning("⚠️ Lütfen analizleri görmek için yukarıdan en az bir depo seçin.")
         else:
-            # YENİ 5. SEKME EKLENDİ (Takip Listesi)
             tab1, tab2, tab4, tab3, tab5 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🏭 Depolar (Top 20)", "🔍 Dive Deep", "📌 Takip Listesi"])
             pdf_buffer = io.BytesIO()
             excel_buffer = io.BytesIO()
@@ -173,17 +157,6 @@ else:
                             degisim_df['Net Adet Değişimi'] = (ozet_pivot['Stokta Bulunan'].iloc[:, -1] - ozet_pivot['Stokta Bulunan'].iloc[:, 0]).values
                             degisim_df['Net Tutar Değişimi (TL)'] = (ozet_pivot['Toplam Fiyat'].iloc[:, -1] - ozet_pivot['Toplam Fiyat'].iloc[:, 0]).values
                             degisim_df = degisim_df[(degisim_df['Kayıp Değişimi (Adet)'] != 0) | (degisim_df['Buldum Değişimi (Adet)'] != 0) | (degisim_df['Net Adet Değişimi'] != 0)].copy()
-
-                        if not degisim_df.empty and SLACK_WEBHOOK_URL != "":
-                            kritik_degisimler = degisim_df[degisim_df['Ürün Tipi'].str.lower().isin([u.lower() for u in slack_bildirim_gidecek_urunler])]
-                            if not kritik_degisimler.empty:
-                                mesaj_icerigi = "*🚨 KRİTİK ÜRÜN STOK ALARMI!*\n"
-                                for _, row in kritik_degisimler.iterrows():
-                                    urun = row['Ürün Tipi'].upper()
-                                    net_degisim = row['Net Adet Değişimi']
-                                    if net_degisim > 0: mesaj_icerigi += f"🔻 *{urun}:* {net_degisim:.0f} Adet YENİ KAYIP\n"
-                                    elif net_degisim < 0: mesaj_icerigi += f"🟢 *{urun}:* {abs(net_degisim):.0f} Adet BULDUM\n"
-                                slack_bildirimi_gonder(mesaj_icerigi)
 
                         if degisim_df.empty: st.info("Hareketi olan kategori bulunamadı.")
                         else: st.dataframe(degisim_df.style.format({'Kayıp Değişimi (Adet)': "{:,.0f}", 'Buldum Değişimi (Adet)': "{:,.0f}", 'Net Adet Değişimi': "{:,.0f}", 'Net Tutar Değişimi (TL)': "{:,.0f}"}), use_container_width=True, hide_index=True)
@@ -330,4 +303,154 @@ else:
                             total_idx = pd.MultiIndex.from_tuples([('GENEL TOPLAM', '-', '-')], names=f_df.index.names)
                             tr = pd.DataFrame(index=total_idx, columns=f_df.columns)
                             tr[('Stokta Bulunan', t1)], tr[('Stokta Bulunan', t2)] = f_df[('Stokta Bulunan', t1)].sum(), f_df[('Stokta Bulunan', t2)].sum()
-                            tr[('Analiz', 'Fark_Adet')], tr[('Analiz', 'Güncel_Tutar_TL')] = f_df[('Analiz', 'Fark_Adet')].sum(), f_
+                            tr[('Analiz', 'Fark_Adet')], tr[('Analiz', 'Güncel_Tutar_TL')] = f_df[('Analiz', 'Fark_Adet')].sum(), f_df[('Analiz', 'Güncel_Tutar_TL')].sum()
+                            f_with_t = pd.concat([f_df, tr])
+                            
+                            m_k, m_b = f_df[('Analiz', 'Güncel_Tutar_TL')].max(), f_df[('Analiz', 'Güncel_Tutar_TL')].min()
+                            def lts(row):
+                                styles = []
+                                if row.name[0] == 'GENEL TOPLAM': return ['background-color: #2c3e50; color: white; font-weight: bold;' for _ in row.index]
+                                tutar, durum = row[('Analiz', 'Güncel_Tutar_TL')], row[('Analiz', 'DURUM')]
+                                for col in row.index:
+                                    if col[0] == 'Stokta Bulunan' and col[1] == t1: styles.append('background-color: #f1f2f6; color: #7f8c8d;')
+                                    elif col[0] == 'Stokta Bulunan' and col[1] == t2: styles.append('font-weight: bold;')
+                                    elif col[0] == 'Analiz':
+                                        if durum == 'EŞİTLENDİ': styles.append('background-color: #d6eaf8; color: #1b4f72; font-weight: bold;')
+                                        elif tutar > 0:
+                                            a = 0.1 + (0.4 * (tutar / m_k)) if m_k > 0 else 0.2
+                                            styles.append(f'background-color: rgba(231, 76, 60, {a}); color: #7b241c; font-weight: bold;')
+                                        elif tutar < 0:
+                                            a = 0.1 + (0.4 * (tutar / m_b)) if m_b < 0 else 0.2
+                                            styles.append(f'background-color: rgba(46, 204, 113, {a}); color: #145a32; font-weight: bold;')
+                                        else: styles.append('')
+                                    else: styles.append('')
+                                return styles
+                            st.dataframe(f_with_t.style.apply(lts, axis=1).format({('Stokta Bulunan', t1): "{:.0f}", ('Stokta Bulunan', t2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}), use_container_width=True)
+
+                with tab5:
+                    st.markdown("**📌 Özel Takip Listesi (Watchlist)**")
+                    st.info("💡 Sorunlu veya şüpheli bulduğunuz malzemeleri (SKU) buraya ekleyerek, yeni raporlar yükledikçe açıkların kapanıp kapanmadığını gün gün takip edebilirsiniz.")
+                    
+                    if os.path.exists(TRACK_FILE):
+                        takip_df = pd.read_csv(TRACK_FILE)
+                        takip_df['malzeme no'] = takip_df['malzeme no'].astype(str)
+                    else:
+                        takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
+                    
+                    with st.expander("➕ Yeni Malzeme (SKU) Ekle", expanded=False):
+                        mevcut_tum_skular = df_master['malzeme no'].astype(str).unique().tolist()
+                        col_y1, col_y2 = st.columns([1, 2])
+                        secilen_yeni_sku = col_y1.selectbox("Takip edilecek Malzeme No:", options=[""] + mevcut_tum_skular)
+                        ekleme_notu = col_y2.text_input("Açıklama / Özel Not (Opsiyonel):", placeholder="Örn: Sayım hatası var, depocu araştırıyor...")
+                        
+                        if st.button("Listeye Ekle / Kaydet"):
+                            if secilen_yeni_sku != "":
+                                if secilen_yeni_sku not in takip_df['malzeme no'].values:
+                                    yeni_kayit = pd.DataFrame([{'malzeme no': secilen_yeni_sku, 'Eklenme_Tarihi': son_tarih, 'Not': ekleme_notu}])
+                                    takip_df = pd.concat([takip_df, yeni_kayit], ignore_index=True)
+                                    takip_df.to_csv(TRACK_FILE, index=False)
+                                    st.success(f"✅ {secilen_yeni_sku} başarıyla takibe alındı!")
+                                    st.rerun()
+                                else: st.warning("⚠️ Bu malzeme zaten takip listesinde bulunuyor.")
+                            else: st.warning("⚠️ Lütfen bir malzeme no seçin.")
+
+                    if not takip_df.empty:
+                        st.markdown("#### 🔍 Takip Edilen Malzemelerin Güncel Durumu")
+                        track_skus = takip_df['malzeme no'].tolist()
+                        t_df = df_master[df_master['malzeme no'].astype(str).isin(track_skus)].copy()
+                        
+                        if not t_df.empty:
+                            t_pivot = t_df.pivot_table(index=['malzeme no', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values='Stokta Bulunan', aggfunc='sum').fillna(0)
+                            if len(t_pivot.columns) > 1:
+                                t1, t2 = t_pivot.columns[0], t_pivot.columns[-1]
+                                t_pivot['Fark_Adet'] = t_pivot[t2] - t_pivot[t1]
+                            else:
+                                t1 = t2 = t_pivot.columns[0]
+                                t_pivot['Fark_Adet'] = 0
+                            
+                            prices = t_df.groupby('malzeme no')['Birim Fiyat'].max()
+                            t_pivot = t_pivot.reset_index()
+                            t_pivot['malzeme no'] = t_pivot['malzeme no'].astype(str)
+                            t_pivot = pd.merge(t_pivot, prices, on='malzeme no', how='left')
+                            t_pivot['Güncel_Tutar_TL'] = t_pivot[t2] * t_pivot['Birim Fiyat']
+                            
+                            def t_durum(row):
+                                if row[t2] == 0: return "EŞİTLENDİ (Çözüldü)"
+                                elif row['Fark_Adet'] > 0: return "KAYIP (Açık Büyüdü)"
+                                elif row['Fark_Adet'] < 0: return "BULDUM (Açık Küçüldü)"
+                                else: return "SABİT (Hala Açık Var)"
+                                
+                            t_pivot['Güncel_Durum'] = t_pivot.apply(t_durum, axis=1)
+                            final_track_df = pd.merge(takip_df, t_pivot, on='malzeme no', how='inner')
+                            
+                            gosterilecek_kolonlar = ['malzeme no', 'Malzeme Tanımı', 'Eklenme_Tarihi', 'Not', t1, t2, 'Fark_Adet', 'Güncel_Tutar_TL', 'Güncel_Durum']
+                            gosterim_df = final_track_df[gosterilecek_kolonlar].copy()
+                            gosterim_df.rename(columns={t1: f'İlk Gün ({t1}) Stok', t2: f'Güncel ({t2}) Stok'}, inplace=True)
+                            
+                            def style_tracking(row):
+                                styles = []
+                                durum = row['Güncel_Durum']
+                                for col in row.index:
+                                    if col == 'Güncel_Durum':
+                                        if 'EŞİTLENDİ' in durum: styles.append('background-color: #d6eaf8; color: #1b4f72; font-weight: bold;')
+                                        elif 'KAYIP' in durum: styles.append('background-color: #fadbd8; color: #7b241c; font-weight: bold;')
+                                        elif 'BULDUM' in durum: styles.append('background-color: #d5f5e3; color: #145a32; font-weight: bold;')
+                                        else: styles.append('background-color: #fcf3cf; color: #7d6608; font-weight: bold;')
+                                    else: styles.append('')
+                                return styles
+                                
+                            st.dataframe(gosterim_df.style.apply(style_tracking, axis=1).format({f'İlk Gün ({t1}) Stok': "{:.0f}", f'Güncel ({t2}) Stok': "{:.0f}", 'Fark_Adet': "{:.0f}", 'Güncel_Tutar_TL': format_money}), use_container_width=True, hide_index=True)
+                            
+                            st.markdown("---")
+                            col_s1, col_s2 = st.columns([1, 2])
+                            silinecek_sku = col_s1.selectbox("Sorunu çözülen malzemeyi takipten çıkar:", options=[""] + track_skus)
+                            if col_s1.button("🗑️ Listeden Sil (Sorun Çözüldü)"):
+                                if silinecek_sku != "":
+                                    takip_df = takip_df[takip_df['malzeme no'] != silinecek_sku]
+                                    takip_df.to_csv(TRACK_FILE, index=False)
+                                    st.success(f"✅ {silinecek_sku} listeden çıkarıldı!")
+                                    st.rerun()
+                        else: st.info("Listeye eklediğiniz SKU'lar mevcut güncel dosyalarda bulunamadı.")
+                    else: st.info("Şu an takip listeniz boş. Yukarıdaki 'Yeni Malzeme Ekle' butonunu kullanarak şüpheli ürünleri takibe alabilirsiniz.")
+
+            # --- EXCEL RAPORUNU OLUŞTURMA ---
+            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                excel_dolu_mu = False
+                if 'degisim_df' in locals() and not degisim_df.empty:
+                    degisim_df.to_excel(writer, sheet_name='Kategori_Degisim', index=False)
+                    excel_dolu_mu = True
+                if 'f_with_t' in locals() and not f_with_t.empty:
+                    f_with_t.to_excel(writer, sheet_name='Dive_Deep_Analizi')
+                    excel_dolu_mu = True
+                if 'guncel_tab4_df' in locals() and not guncel_tab4_df.empty:
+                    depo_liste_excel = []
+                    for d in depolar_listesi:
+                        d_data = guncel_tab4_df[guncel_tab4_df[depo_col] == d]
+                        sku_d = d_data.groupby(['malzeme no', 'Malzeme Tanımı', 'Ürün Tipi'])[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
+                        t_k = sku_d[sku_d['Kayıp_Adet'] > 0].sort_values(by='Kayıp_Tutar', ascending=False).head(20).copy()
+                        if not t_k.empty:
+                            t_k['Depo'] = d
+                            t_k['Durum'] = 'KAYIP'
+                            depo_liste_excel.append(t_k[['Depo', 'Durum', 'Ürün Tipi', 'malzeme no', 'Malzeme Tanımı', 'Kayıp_Adet', 'Kayıp_Tutar']].rename(columns={'Kayıp_Adet': 'Adet', 'Kayıp_Tutar': 'Tutar (TL)'}))
+                        t_b = sku_d[sku_d['Buldum_Adet'] < 0].copy()
+                        if not t_b.empty:
+                            t_b['Buldum_Adet'] = t_b['Buldum_Adet'].abs()
+                            t_b['Buldum_Tutar'] = t_b['Buldum_Tutar'].abs()
+                            t_b = t_b.sort_values(by='Buldum_Tutar', ascending=False).head(20)
+                            t_b['Depo'] = d
+                            t_b['Durum'] = 'BULDUM'
+                            depo_liste_excel.append(t_b[['Depo', 'Durum', 'Ürün Tipi', 'malzeme no', 'Malzeme Tanımı', 'Buldum_Adet', 'Buldum_Tutar']].rename(columns={'Buldum_Adet': 'Adet', 'Buldum_Tutar': 'Tutar (TL)'}))
+                    if depo_liste_excel:
+                        final_depo_excel = pd.concat(depo_liste_excel, ignore_index=True)
+                        final_depo_excel.to_excel(writer, sheet_name='Depolar_Top20', index=False)
+                        excel_dolu_mu = True
+                if 'gosterim_df' in locals() and not gosterim_df.empty:
+                    gosterim_df.to_excel(writer, sheet_name='Takip_Listesi', index=False)
+                    excel_dolu_mu = True
+                if not excel_dolu_mu:
+                    pd.DataFrame({'Bilgi': ['Seçili filtrelere uygun veri bulunamadı.']}).to_excel(writer, sheet_name='Bilgi', index=False)
+
+            # İndirme Butonları
+            c_empty, cpdf, cex = st.columns([6, 1, 1])
+            with cpdf: st.download_button("📄 PDF İndir", data=pdf_buffer.getvalue(), file_name=f"Stok_Dashboard_{son_tarih}.pdf", use_container_width=True)
+            with cex: st.download_button("📊 Excel İndir", data=excel_buffer.getvalue(), file_name=f"Stok_Detay_{son_tarih}.xlsx", use_container_width=True)
