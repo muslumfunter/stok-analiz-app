@@ -6,6 +6,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import plotly.graph_objects as go
 import io
 import os
+from datetime import datetime
 
 # 1. SAYFA AYARLARI (Geniş Ekran Modu)
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
@@ -57,7 +58,7 @@ def label_bars(ax, is_money=False):
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 TRACK_FILE = "takip_listesi.csv" 
 
-# 3. YATAY DOSYA YÜKLEME
+# 3. YATAY DOSYA YÜKLEME VE HİZALANMIŞ UYARI
 col_info, col_upload = st.columns([1.5, 3])
 with col_info: 
     st.caption("💡 Karşılaştırma için en az 2 rapor yükleyin (Örn: 15_DepoA.xlsx, 16_DepoA.xlsx)")
@@ -66,7 +67,7 @@ with col_upload:
     if len(uploaded_files) < 2:
         st.warning("👆 Lütfen analizin yapılabilmesi için en az 2 adet Excel dosyasını hemen yukarıdaki alana yükleyin.")
 
-# 4. ANALİZ VE DASHBOARD
+# 4. ANALİZ VE DASHBOARD (Sadece yeterli dosya yüklendiğinde çalışır)
 if len(uploaded_files) >= 2:
     with st.spinner("Veriler işleniyor..."):
         liste = []
@@ -346,7 +347,8 @@ if len(uploaded_files) >= 2:
                         if st.button("Listeye Ekle / Kaydet"):
                             if secilen_yeni_sku != "":
                                 if secilen_yeni_sku not in takip_df['malzeme no'].values:
-                                    yeni_kayit = pd.DataFrame([{'malzeme no': secilen_yeni_sku, 'Eklenme_Tarihi': son_tarih, 'Not': ekleme_notu}])
+                                    tam_tarih = f"{son_tarih}.{datetime.now().strftime('%m.%Y')}"
+                                    yeni_kayit = pd.DataFrame([{'malzeme no': secilen_yeni_sku, 'Eklenme_Tarihi': tam_tarih, 'Not': ekleme_notu}])
                                     takip_df = pd.concat([takip_df, yeni_kayit], ignore_index=True)
                                     takip_df.to_csv(TRACK_FILE, index=False)
                                     st.success(f"✅ {secilen_yeni_sku} başarıyla takibe alındı!")
