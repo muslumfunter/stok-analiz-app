@@ -12,6 +12,43 @@ from datetime import datetime
 st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout="wide")
 
 # ==========================================
+# 🔒 GÜVENLİK (ŞİFRE) EKRANI
+# ==========================================
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    # Eğer henüz giriş yapılmadıysa, durumu False olarak işaretle
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    # Giriş yapılmadıysa Şifre Ekranını göster
+    if not st.session_state["authenticated"]:
+        
+        # Ekranı biraz daha şık ortalamak için boşluk bırakalım
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns([1, 1, 1])
+        
+        with col2:
+            st.markdown("<h2 style='text-align: center; color: #2c3e50;'>🔒 Yönetici Girişi</h2>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #7f8c8d;'>Devam etmek için lütfen şifrenizi girin.</p>", unsafe_allow_html=True)
+            
+            password = st.text_input("Şifre", type="password", label_visibility="collapsed", placeholder="Şifrenizi girin...")
+            
+            if st.button("Giriş Yap", use_container_width=True):
+                # GEÇERLİ ŞİFREYİ BURADAN DEĞİŞTİREBİLİRSİN
+                if password == "StokAnaliz2026!":
+                    st.session_state["authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("❌ Hatalı şifre girdiniz!")
+                    
+        # Giriş yapılmadan kodun geri kalanını ÇALIŞTIRMA (Durdur)
+        st.stop()
+
+# Güvenlik bariyerini tetikle
+check_password()
+
+# ==========================================
 # 🎨 ULTRA KOMPAKT TASARIM (CSS OPTİMİZASYONU)
 # ==========================================
 st.markdown("""
