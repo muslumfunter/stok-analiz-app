@@ -60,15 +60,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- BAŞLIK VE ÜST BUTONLAR ---
-col_t1, col_t2, col_t3 = st.columns([7, 1, 1])
+# --- BAŞLIK VE GÜVENLİ ÇIKIŞ BUTONU ---
+col_t1, col_t3 = st.columns([10, 1])
 with col_t1:
     st.markdown("### 📦 Operasyon Kalite - Sayım Farkı Dashboard")
-with col_t2:
-    if st.button("🔄 Yenile", use_container_width=True):
-        st.rerun()
 with col_t3:
     if st.button("🚪 Çıkış", use_container_width=True):
+        st.session_state.clear() # Tüm hafızayı güvenle temizle
         st.session_state["authenticated"] = False
         st.rerun()
 
@@ -106,7 +104,7 @@ with col_upload:
     if len(uploaded_files) < 2:
         st.warning("👆 Lütfen analizin yapılabilmesi için en az 2 adet Excel dosyasını hemen yukarıdaki alana yükleyin.")
 
-# 4. ANALİZ VE DASHBOARD
+# 4. ANALİZ VE DASHBOARD 
 if len(uploaded_files) >= 2:
     with st.spinner("Veriler işleniyor..."):
         liste = []
