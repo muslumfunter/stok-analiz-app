@@ -15,16 +15,10 @@ st.set_page_config(page_title="Stok Analiz Dashboard", page_icon="📦", layout=
 # 🔒 GÜVENLİK (ŞİFRE) EKRANI
 # ==========================================
 def check_password():
-    """Returns `True` if the user had the correct password."""
-
-    # Eğer henüz giriş yapılmadıysa, durumu False olarak işaretle
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
 
-    # Giriş yapılmadıysa Şifre Ekranını göster
     if not st.session_state["authenticated"]:
-        
-        # Ekranı biraz daha şık ortalamak için boşluk bırakalım
         st.markdown("<br><br><br>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1, 1, 1])
         
@@ -42,10 +36,8 @@ def check_password():
                 else:
                     st.error("❌ Hatalı şifre girdiniz!")
                     
-        # Giriş yapılmadan kodun geri kalanını ÇALIŞTIRMA (Durdur)
         st.stop()
 
-# Güvenlik bariyerini tetikle
 check_password()
 
 # ==========================================
@@ -68,7 +60,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("### 📦 Operasyon Kalite - Sayım Farkı Dashboard")
+# --- BAŞLIK VE ÜST BUTONLAR ---
+col_t1, col_t2, col_t3 = st.columns([7, 1, 1])
+with col_t1:
+    st.markdown("### 📦 Operasyon Kalite - Sayım Farkı Dashboard")
+with col_t2:
+    if st.button("🔄 Yenile", use_container_width=True):
+        st.rerun()
+with col_t3:
+    if st.button("🚪 Çıkış", use_container_width=True):
+        st.session_state["authenticated"] = False
+        st.rerun()
 
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
@@ -104,7 +106,7 @@ with col_upload:
     if len(uploaded_files) < 2:
         st.warning("👆 Lütfen analizin yapılabilmesi için en az 2 adet Excel dosyasını hemen yukarıdaki alana yükleyin.")
 
-# 4. ANALİZ VE DASHBOARD (Sadece yeterli dosya yüklendiğinde çalışır)
+# 4. ANALİZ VE DASHBOARD
 if len(uploaded_files) >= 2:
     with st.spinner("Veriler işleniyor..."):
         liste = []
@@ -127,7 +129,6 @@ if len(uploaded_files) >= 2:
         
         if depo_col:
             df_master[depo_col] = df_master[depo_col].astype(str).str.replace(r'\.0$', '', regex=True)
-            # TypeError Hatası Çözümü: nan değerleri eledik
             mevcut_depolar = sorted([d for d in df_master[depo_col].unique() if str(d).lower() != 'nan' and str(d).lower() != 'none'])
             secilen_depolar = st.multiselect("🏢 **Ana Dashboard Depo Filtresi:**", options=mevcut_depolar, default=mevcut_depolar)
             aktif_df = df_master[df_master[depo_col].isin(secilen_depolar)].copy() if secilen_depolar else df_master.iloc[0:0].copy()
@@ -155,7 +156,6 @@ if len(uploaded_files) >= 2:
                         depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
                         html_etiketler = "<div style='display:flex; flex-wrap:wrap; gap:8px; margin-top:5px; margin-bottom:5px;'>"
                         for _, row in depo_ozet.iterrows():
-                            # Boş depoları pas geçiyoruz
                             if str(row[depo_col]).lower() == 'nan' or str(row[depo_col]).lower() == 'none': continue
                             d_kayip_a = row['Kayıp_Adet']
                             d_kayip_t = format_money(row['Kayıp_Tutar'])
@@ -278,7 +278,6 @@ if len(uploaded_files) >= 2:
                         if guncel_tab4_df.empty:
                             st.info("💡 Seçili tarihte veri bulunamadı.")
                         else:
-                            # Hata Koruması: Sadece geçerli depolar
                             depolar_listesi = sorted([d for d in guncel_tab4_df[depo_col].unique() if str(d).lower() != 'nan' and str(d).lower() != 'none'])
                             for d in depolar_listesi:
                                 st.markdown(f"<h5 style='color:#2c3e50; margin-top:20px !important; border-bottom:2px solid #3498db; padding-bottom:5px;'>🏢 {d} Deposu</h5>", unsafe_allow_html=True)
@@ -309,7 +308,6 @@ if len(uploaded_files) >= 2:
                     st.markdown("**🔍 Malzeme Bazlı Analiz (SKU)**")
                     if depo_col:
                         col_d, col_u, col_dr, col_s = st.columns(4)
-                        # Hata Koruması eklendi
                         sec_depo_dive = col_d.multiselect("🏢 Depo:", options=mevcut_depolar, default=mevcut_depolar, key="dive_depo_filter")
                         deep_base_df = df_master[df_master[depo_col].isin(sec_depo_dive)].copy()
                     else:
@@ -381,7 +379,6 @@ if len(uploaded_files) >= 2:
                         takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
                     
                     with st.expander("➕ Yeni Malzeme (SKU) Ekle", expanded=False):
-                        # NaN SKU'ları filtrele
                         mevcut_tum_skular = sorted([str(s) for s in df_master['malzeme no'].unique() if str(s).lower() != 'nan'])
                         col_y1, col_y2 = st.columns([1, 2])
                         secilen_yeni_sku = col_y1.selectbox("Takip edilecek Malzeme No:", options=[""] + mevcut_tum_skular)
@@ -472,8 +469,6 @@ if len(uploaded_files) >= 2:
                     excel_dolu_mu = True
                 if 'guncel_tab4_df' in locals() and not guncel_tab4_df.empty:
                     depo_liste_excel = []
-                    # Hata koruması: Sadece geçerli depolar
-                    depolar_listesi = sorted([d for d in guncel_tab4_df[depo_col].unique() if str(d).lower() != 'nan' and str(d).lower() != 'none'])
                     for d in depolar_listesi:
                         d_data = guncel_tab4_df[guncel_tab4_df[depo_col] == d]
                         sku_d = d_data.groupby(['malzeme no', 'Malzeme Tanımı', 'Ürün Tipi'])[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
