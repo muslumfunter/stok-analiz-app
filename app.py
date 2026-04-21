@@ -57,7 +57,7 @@ def label_bars(ax, is_money=False):
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 TRACK_FILE = "takip_listesi.csv" 
 
-# 3. YATAY DOSYA YÜKLEME VE HİZALANMIŞ UYARI
+# 3. YATAY DOSYA YÜKLEME
 col_info, col_upload = st.columns([1.5, 3])
 with col_info: 
     st.caption("💡 Karşılaştırma için en az 2 rapor yükleyin (Örn: 15_DepoA.xlsx, 16_DepoA.xlsx)")
@@ -66,7 +66,7 @@ with col_upload:
     if len(uploaded_files) < 2:
         st.warning("👆 Lütfen analizin yapılabilmesi için en az 2 adet Excel dosyasını hemen yukarıdaki alana yükleyin.")
 
-# 4. ANALİZ VE DASHBOARD (Sadece yeterli dosya yüklendiğinde çalışır)
+# 4. ANALİZ VE DASHBOARD
 if len(uploaded_files) >= 2:
     with st.spinner("Veriler işleniyor..."):
         liste = []
@@ -329,7 +329,7 @@ if len(uploaded_files) >= 2:
 
                 with tab5:
                     st.markdown("**📌 Özel Takip Listesi (Watchlist)**")
-                    st.info("💡 Sorunlu veya şüpheli bulduğunuz malzemeleri (SKU) buraya ekleyerek, yeni raporlar yükledikçe açıkların kapanıp kapanmadığını gün gün takip edebilirsiniz.")
+                    st.info("💡 Şüpheli bulduğunuz malzemeleri (SKU) ekleyerek, yeni raporlar yükledikçe açıkların durumunu gün gün takip edebilirsiniz.")
                     
                     if os.path.exists(TRACK_FILE):
                         takip_df = pd.read_csv(TRACK_FILE)
@@ -360,22 +360,25 @@ if len(uploaded_files) >= 2:
                         t_df = df_master[df_master['malzeme no'].astype(str).isin(track_skus)].copy()
                         
                         if not t_df.empty:
+                            tum_tarihler = sorted(df_master['Rapor_Tarihi'].unique().tolist())
+                            t1_g = tum_tarihler[0]
+                            t2_g = tum_tarihler[-1]
+                            
                             t_pivot = t_df.pivot_table(index=['malzeme no', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values='Stokta Bulunan', aggfunc='sum').fillna(0)
-                            if len(t_pivot.columns) > 1:
-                                t1, t2 = t_pivot.columns[0], t_pivot.columns[-1]
-                                t_pivot['Fark_Adet'] = t_pivot[t2] - t_pivot[t1]
-                            else:
-                                t1 = t2 = t_pivot.columns[0]
-                                t_pivot['Fark_Adet'] = 0
+                            
+                            if t1_g not in t_pivot.columns: t_pivot[t1_g] = 0
+                            if t2_g not in t_pivot.columns: t_pivot[t2_g] = 0
+                                
+                            t_pivot['Fark_Adet'] = t_pivot[t2_g] - t_pivot[t1_g]
                             
                             prices = t_df.groupby('malzeme no')['Birim Fiyat'].max()
                             t_pivot = t_pivot.reset_index()
                             t_pivot['malzeme no'] = t_pivot['malzeme no'].astype(str)
                             t_pivot = pd.merge(t_pivot, prices, on='malzeme no', how='left')
-                            t_pivot['Güncel_Tutar_TL'] = t_pivot[t2] * t_pivot['Birim Fiyat']
+                            t_pivot['Güncel_Tutar_TL'] = t_pivot[t2_g] * t_pivot['Birim Fiyat']
                             
                             def t_durum(row):
-                                if row[t2] == 0: return "EŞİTLENDİ (Çözüldü)"
+                                if row[t2_g] == 0: return "EŞİTLENDİ (Çözüldü)"
                                 elif row['Fark_Adet'] > 0: return "KAYIP (Açık Büyüdü)"
                                 elif row['Fark_Adet'] < 0: return "BULDUM (Açık Küçüldü)"
                                 else: return "SABİT (Hala Açık Var)"
@@ -383,9 +386,9 @@ if len(uploaded_files) >= 2:
                             t_pivot['Güncel_Durum'] = t_pivot.apply(t_durum, axis=1)
                             final_track_df = pd.merge(takip_df, t_pivot, on='malzeme no', how='inner')
                             
-                            gosterilecek_kolonlar = ['malzeme no', 'Malzeme Tanımı', 'Eklenme_Tarihi', 'Not', t1, t2, 'Fark_Adet', 'Güncel_Tutar_TL', 'Güncel_Durum']
+                            gosterilecek_kolonlar = ['malzeme no', 'Malzeme Tanımı', 'Eklenme_Tarihi', 'Not', t1_g, t2_g, 'Fark_Adet', 'Güncel_Tutar_TL', 'Güncel_Durum']
                             gosterim_df = final_track_df[gosterilecek_kolonlar].copy()
-                            gosterim_df.rename(columns={t1: f'İlk Gün ({t1}) Stok', t2: f'Güncel ({t2}) Stok'}, inplace=True)
+                            gosterim_df.rename(columns={t1_g: f'İlk Gün ({t1_g}) Stok', t2_g: f'Güncel ({t2_g}) Stok'}, inplace=True)
                             
                             def style_tracking(row):
                                 styles = []
@@ -399,7 +402,7 @@ if len(uploaded_files) >= 2:
                                     else: styles.append('')
                                 return styles
                                 
-                            st.dataframe(gosterim_df.style.apply(style_tracking, axis=1).format({f'İlk Gün ({t1}) Stok': "{:.0f}", f'Güncel ({t2}) Stok': "{:.0f}", 'Fark_Adet': "{:.0f}", 'Güncel_Tutar_TL': format_money}), use_container_width=True, hide_index=True)
+                            st.dataframe(gosterim_df.style.apply(style_tracking, axis=1).format({f'İlk Gün ({t1_g}) Stok': "{:.0f}", f'Güncel ({t2_g}) Stok': "{:.0f}", 'Fark_Adet': "{:.0f}", 'Güncel_Tutar_TL': format_money}), use_container_width=True, hide_index=True)
                             
                             st.markdown("---")
                             col_s1, col_s2 = st.columns([1, 2])
