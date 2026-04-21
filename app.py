@@ -90,7 +90,8 @@ if len(uploaded_files) >= 2:
         
         if depo_col:
             df_master[depo_col] = df_master[depo_col].astype(str).str.replace(r'\.0$', '', regex=True)
-            mevcut_depolar = sorted(df_master[depo_col].unique().tolist())
+            # TypeError Hatası Çözümü: nan değerleri eledik
+            mevcut_depolar = sorted([d for d in df_master[depo_col].unique() if str(d).lower() != 'nan' and str(d).lower() != 'none'])
             secilen_depolar = st.multiselect("🏢 **Ana Dashboard Depo Filtresi:**", options=mevcut_depolar, default=mevcut_depolar)
             aktif_df = df_master[df_master[depo_col].isin(secilen_depolar)].copy() if secilen_depolar else df_master.iloc[0:0].copy()
         else:
@@ -117,6 +118,8 @@ if len(uploaded_files) >= 2:
                         depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
                         html_etiketler = "<div style='display:flex; flex-wrap:wrap; gap:8px; margin-top:5px; margin-bottom:5px;'>"
                         for _, row in depo_ozet.iterrows():
+                            # Boş depoları pas geçiyoruz
+                            if str(row[depo_col]).lower() == 'nan' or str(row[depo_col]).lower() == 'none': continue
                             d_kayip_a = row['Kayıp_Adet']
                             d_kayip_t = format_money(row['Kayıp_Tutar'])
                             d_buldum_a = abs(row['Buldum_Adet'])
@@ -238,7 +241,8 @@ if len(uploaded_files) >= 2:
                         if guncel_tab4_df.empty:
                             st.info("💡 Seçili tarihte veri bulunamadı.")
                         else:
-                            depolar_listesi = sorted(guncel_tab4_df[depo_col].unique().tolist())
+                            # Hata Koruması: Sadece geçerli depolar
+                            depolar_listesi = sorted([d for d in guncel_tab4_df[depo_col].unique() if str(d).lower() != 'nan' and str(d).lower() != 'none'])
                             for d in depolar_listesi:
                                 st.markdown(f"<h5 style='color:#2c3e50; margin-top:20px !important; border-bottom:2px solid #3498db; padding-bottom:5px;'>🏢 {d} Deposu</h5>", unsafe_allow_html=True)
                                 d_data = guncel_tab4_df[guncel_tab4_df[depo_col] == d]
@@ -268,6 +272,7 @@ if len(uploaded_files) >= 2:
                     st.markdown("**🔍 Malzeme Bazlı Analiz (SKU)**")
                     if depo_col:
                         col_d, col_u, col_dr, col_s = st.columns(4)
+                        # Hata Koruması eklendi
                         sec_depo_dive = col_d.multiselect("🏢 Depo:", options=mevcut_depolar, default=mevcut_depolar, key="dive_depo_filter")
                         deep_base_df = df_master[df_master[depo_col].isin(sec_depo_dive)].copy()
                     else:
@@ -339,7 +344,8 @@ if len(uploaded_files) >= 2:
                         takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
                     
                     with st.expander("➕ Yeni Malzeme (SKU) Ekle", expanded=False):
-                        mevcut_tum_skular = df_master['malzeme no'].astype(str).unique().tolist()
+                        # NaN SKU'ları filtrele
+                        mevcut_tum_skular = sorted([str(s) for s in df_master['malzeme no'].unique() if str(s).lower() != 'nan'])
                         col_y1, col_y2 = st.columns([1, 2])
                         secilen_yeni_sku = col_y1.selectbox("Takip edilecek Malzeme No:", options=[""] + mevcut_tum_skular)
                         ekleme_notu = col_y2.text_input("Açıklama / Özel Not (Opsiyonel):", placeholder="Örn: Sayım hatası var, depocu araştırıyor...")
@@ -429,6 +435,8 @@ if len(uploaded_files) >= 2:
                     excel_dolu_mu = True
                 if 'guncel_tab4_df' in locals() and not guncel_tab4_df.empty:
                     depo_liste_excel = []
+                    # Hata koruması: Sadece geçerli depolar
+                    depolar_listesi = sorted([d for d in guncel_tab4_df[depo_col].unique() if str(d).lower() != 'nan' and str(d).lower() != 'none'])
                     for d in depolar_listesi:
                         d_data = guncel_tab4_df[guncel_tab4_df[depo_col] == d]
                         sku_d = d_data.groupby(['malzeme no', 'Malzeme Tanımı', 'Ürün Tipi'])[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
