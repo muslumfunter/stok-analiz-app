@@ -5,8 +5,6 @@ import seaborn as sns
 from matplotlib.backends.backend_pdf import PdfPages
 import plotly.graph_objects as go
 import io
-import requests
-import json
 import os
 
 # 1. SAYFA AYARLARI (Geniş Ekran Modu)
@@ -34,19 +32,6 @@ st.markdown("""
 
 st.markdown("### 📦 Operasyon Kalite - Sayım Farkı Dashboard")
 
-# ==========================================
-# 🔔 SLACK BOT AYARLARI
-# ==========================================
-slack_bildirim_gidecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu'] 
-SLACK_WEBHOOK_URL = "" 
-
-def slack_bildirimi_gonder(mesaj):
-    if not SLACK_WEBHOOK_URL or SLACK_WEBHOOK_URL == "": return 
-    try:
-        payload = {"text": mesaj}
-        requests.post(SLACK_WEBHOOK_URL, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
-    except Exception as e: print(f"Slack hatası: {e}")
-
 # 2. YARDIMCI FONKSİYONLAR
 def format_money(x):
     try:
@@ -72,17 +57,17 @@ def label_bars(ax, is_money=False):
 izlenecek_urunler = ['taşınabilir bilgisayar', 'cep telefonu', 'tabletler', 'IPL cihazları']
 TRACK_FILE = "takip_listesi.csv" 
 
-# 3. YATAY DOSYA YÜKLEME
+# 3. YATAY DOSYA YÜKLEME VE HİZALANMIŞ UYARI
 col_info, col_upload = st.columns([1.5, 3])
 with col_info: 
     st.caption("💡 Karşılaştırma için en az 2 rapor yükleyin (Örn: 15_DepoA.xlsx, 16_DepoA.xlsx)")
 with col_upload: 
     uploaded_files = st.file_uploader("", type=['xlsx'], accept_multiple_files=True, label_visibility="collapsed")
+    if len(uploaded_files) < 2:
+        st.warning("👆 Lütfen analizin yapılabilmesi için en az 2 adet Excel dosyasını hemen yukarıdaki alana yükleyin.")
 
-# 4. ANALİZ VE DASHBOARD
-if len(uploaded_files) < 2:
-    st.warning("👆 Lütfen analizin yapılabilmesi için en az 2 adet Excel dosyasını yukarıdaki alana yükleyin.")
-else:
+# 4. ANALİZ VE DASHBOARD (Sadece yeterli dosya yüklendiğinde çalışır)
+if len(uploaded_files) >= 2:
     with st.spinner("Veriler işleniyor..."):
         liste = []
         for f in uploaded_files:
@@ -172,17 +157,6 @@ else:
                             degisim_df['Net Adet Değişimi'] = (ozet_pivot['Stokta Bulunan'].iloc[:, -1] - ozet_pivot['Stokta Bulunan'].iloc[:, 0]).values
                             degisim_df['Net Tutar Değişimi (TL)'] = (ozet_pivot['Toplam Fiyat'].iloc[:, -1] - ozet_pivot['Toplam Fiyat'].iloc[:, 0]).values
                             degisim_df = degisim_df[(degisim_df['Kayıp Değişimi (Adet)'] != 0) | (degisim_df['Buldum Değişimi (Adet)'] != 0) | (degisim_df['Net Adet Değişimi'] != 0)].copy()
-
-                        if not degisim_df.empty and SLACK_WEBHOOK_URL != "":
-                            kritik_degisimler = degisim_df[degisim_df['Ürün Tipi'].str.lower().isin([u.lower() for u in slack_bildirim_gidecek_urunler])]
-                            if not kritik_degisimler.empty:
-                                mesaj_icerigi = "*🚨 KRİTİK ÜRÜN STOK ALARMI!*\n"
-                                for _, row in kritik_degisimler.iterrows():
-                                    urun = row['Ürün Tipi'].upper()
-                                    net_degisim = row['Net Adet Değişimi']
-                                    if net_degisim > 0: mesaj_icerigi += f"🔻 *{urun}:* {net_degisim:.0f} Adet YENİ KAYIP\n"
-                                    elif net_degisim < 0: mesaj_icerigi += f"🟢 *{urun}:* {abs(net_degisim):.0f} Adet BULDUM\n"
-                                slack_bildirimi_gonder(mesaj_icerigi)
 
                         if degisim_df.empty: st.info("Hareketi olan kategori bulunamadı.")
                         else: st.dataframe(degisim_df.style.format({'Kayıp Değişimi (Adet)': "{:,.0f}", 'Buldum Değişimi (Adet)': "{:,.0f}", 'Net Adet Değişimi': "{:,.0f}", 'Net Tutar Değişimi (TL)': "{:,.0f}"}), use_container_width=True, hide_index=True)
