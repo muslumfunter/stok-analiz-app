@@ -76,7 +76,7 @@ with c1:
     st.caption("📊 Analiz Raporlarını Yükleyin (En az 2 adet)")
     uploaded_files = st.file_uploader("Raporlar", type=['xlsx'], accept_multiple_files=True, label_visibility="collapsed")
 with c2:
-    st.caption("📌 Varsa Mevcut Takip Listesini Yükleyin"G:\Ortak Drive'lar\Operasyon Kalite\Sayım Depolar Takip" (Opsiyonel)")
+    st.caption("📌 Varsa Mevcut Takip Listesini Yükleyin G:\Ortak Drive'lar\Operasyon Kalite\Sayım Depolar Takip (Opsiyonel)")
     track_file_upload = st.file_uploader("Takip Listesi", type=['xlsx', 'csv'], accept_multiple_files=False, label_visibility="collapsed")
 
 # --- ANALİZ VE DASHBOARD ---
