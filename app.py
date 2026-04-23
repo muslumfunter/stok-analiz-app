@@ -86,7 +86,8 @@ if len(uploaded_files) >= 2:
         liste = []
         for f in uploaded_files:
             df = pd.read_excel(f, header=0)
-            df.columns = df.columns.str.strip()
+            # Hata Koruması: Sütun başlıklarını zorla metne çevirip boşlukları temizle
+            df.columns = df.columns.astype(str).str.strip()
             kisa_tarih = f.name.replace(".xlsx", "")[:2]
             df['Rapor_Tarihi'] = kisa_tarih
             liste.append(df)
@@ -113,10 +114,11 @@ if len(uploaded_files) >= 2:
                     else:
                         tmp_df = pd.read_excel(track_file_upload)
                     
-                    # Sütun isimlerindeki yanlışlıkla bırakılmış boşlukları temizle
-                    tmp_df.columns = tmp_df.columns.str.strip()
+                    # Hata Koruması: Sütun başlıklarını zorla metne çevirip temizle
+                    tmp_df.columns = tmp_df.columns.astype(str).str.strip()
                     
                     if 'malzeme no' in tmp_df.columns:
+                        tmp_df['malzeme no'] = tmp_df['malzeme no'].astype(str)
                         st.session_state.takip_df = tmp_df
                     else:
                         st.error("⚠️ Yüklediğiniz Excel'in içinde 'malzeme no' başlıklı bir sütun bulunamadı. Lütfen dosyadaki başlıkları kontrol edin. Sisteme boş bir listeyle devam ediliyor.")
