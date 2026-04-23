@@ -76,7 +76,7 @@ with c1:
     st.caption("📊 Analiz Raporlarını Yükleyin (En az 2 adet)")
     uploaded_files = st.file_uploader("Raporlar", type=['xlsx'], accept_multiple_files=True, label_visibility="collapsed")
 with c2:
-    st.caption("📌 Varsa Mevcut Takip Listesini Yükleyin G:\Ortak Drive'lar\Operasyon Kalite\Sayım Depolar Takip (Opsiyonel)")
+    st.caption("📌 Varsa Mevcut Takip Listesini Yükleyin (Opsiyonel)")
     track_file_upload = st.file_uploader("Takip Listesi", type=['xlsx', 'csv'], accept_multiple_files=False, label_visibility="collapsed")
 
 # --- ANALİZ VE DASHBOARD ---
@@ -100,32 +100,45 @@ if len(uploaded_files) >= 2:
         if depo_col:
             df_master[depo_col] = df_master[depo_col].astype(str).str.replace(r'\.0$', '', regex=True)
             mevcut_depolar = sorted([d for d in df_master[depo_col].unique() if str(d).lower() != 'nan'])
-            secilen_depolar = st.multiselect("🏢 *Depo Filtresi:*", options=mevcut_depolar, default=mevcut_depolar)
+            secilen_depolar = st.multiselect("🏢 **Depo Filtresi:**", options=mevcut_depolar, default=mevcut_depolar)
             aktif_df = df_master[df_master[depo_col].isin(secilen_depolar)].copy()
         else: aktif_df = df_master.copy()
 
-        # 2. Takip Listesini Hafızaya Al (Session State)
+        # 2. Takip Listesini Hafızaya Al (Hata Korumalı)
         if "takip_df" not in st.session_state:
             if track_file_upload is not None:
-                if track_file_upload.name.endswith('.csv'):
-                    st.session_state.takip_df = pd.read_csv(track_file_upload)
-                else:
-                    st.session_state.takip_df = pd.read_excel(track_file_upload)
+                try:
+                    if track_file_upload.name.endswith('.csv'):
+                        tmp_df = pd.read_csv(track_file_upload)
+                    else:
+                        tmp_df = pd.read_excel(track_file_upload)
+                    
+                    # Sütun isimlerindeki yanlışlıkla bırakılmış boşlukları temizle
+                    tmp_df.columns = tmp_df.columns.str.strip()
+                    
+                    if 'malzeme no' in tmp_df.columns:
+                        st.session_state.takip_df = tmp_df
+                    else:
+                        st.error("⚠️ Yüklediğiniz Excel'in içinde 'malzeme no' başlıklı bir sütun bulunamadı. Lütfen dosyadaki başlıkları kontrol edin. Sisteme boş bir listeyle devam ediliyor.")
+                        st.session_state.takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
+                except Exception as e:
+                    st.error(f"⚠️ Takip dosyası okunurken bir hata oluştu: {e}")
+                    st.session_state.takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
             else:
                 st.session_state.takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
         
         # Malzeme no tipini sabitle
-        st.session_state.takip_df['malzeme no'] = st.session_state.takip_df['malzeme no'].astype(str)
+        if not st.session_state.takip_df.empty and 'malzeme no' in st.session_state.takip_df.columns:
+            st.session_state.takip_df['malzeme no'] = st.session_state.takip_df['malzeme no'].astype(str)
 
         tab1, tab2, tab4, tab3, tab5 = st.tabs(["📈 Genel", "🏢 Kategoriler", "🏭 Depolar", "🔍 Dive Deep", "📌 Takip Listesi (Export)"])
 
-        # (Tab 1, 2, 3, 4 kodları öncekiyle aynı kalabilir, kısalık için Tab 5'e odaklanıyorum)
         with tab1: st.info("Dashboard aktif. Detaylar için sekmeleri gezin.")
 
         # --- 📌 TAKİP LİSTESİ (EXPORT/IMPORT MODÜLÜ) ---
         with tab5:
             st.markdown("#### 📌 Takip Listesi Yönetimi")
-            st.info("💡 Burada yaptığınız değişikliklerin kalıcı olması için işiniz bitince en alttaki *'Güncel Listeyi Dışa Aktar'* butonuyla dosyayı ortak alanınıza kaydedin.")
+            st.info("💡 Burada yaptığınız değişikliklerin kalıcı olması için işiniz bitince en alttaki **'Güncel Listeyi Dışa Aktar'** butonuyla dosyayı ortak alanınıza kaydedin.")
 
             # Yeni Ekleme Formu
             with st.expander("➕ Listeye Yeni Ürün Ekle", expanded=False):
@@ -140,6 +153,8 @@ if len(uploaded_files) >= 2:
                         st.session_state.takip_df = pd.concat([st.session_state.takip_df, yeni_satir], ignore_index=True)
                         st.success(f"{sec_sku} listeye eklendi!")
                         st.rerun()
+                    elif sec_sku in st.session_state.takip_df['malzeme no'].values:
+                        st.warning("Bu malzeme zaten takip listenizde mevcut.")
 
             # Takip Listesi Tablosu ve Analiz
             if not st.session_state.takip_df.empty:
@@ -147,14 +162,12 @@ if len(uploaded_files) >= 2:
                 t_analiz_df = df_master[df_master['malzeme no'].astype(str).isin(track_skus)].copy()
                 
                 if not t_analiz_df.empty:
-                    # Raporlardaki güncel stok durumlarını getir
                     t_pivot = t_analiz_df.pivot_table(index='malzeme no', columns='Rapor_Tarihi', values='Stokta Bulunan', aggfunc='sum').reset_index()
                     t_pivot['malzeme no'] = t_pivot['malzeme no'].astype(str)
                     gosterim_df = pd.merge(st.session_state.takip_df, t_pivot, on='malzeme no', how='left').fillna(0)
-                    
                     st.dataframe(gosterim_df, use_container_width=True, hide_index=True)
                 else:
-                    st.dataframe(st.session_state.takip_df, use_container_width=True)
+                    st.dataframe(st.session_state.takip_df, use_container_width=True, hide_index=True)
 
                 st.markdown("---")
                 
