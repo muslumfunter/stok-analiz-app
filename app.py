@@ -50,6 +50,11 @@ st.markdown("""
     .stTabs { margin-top: -0.5rem !important; }
     .stTabs [data-baseweb="tab-list"] { gap: 2px; }
     .stTabs [data-baseweb="tab"] { height: 35px; padding: 0px 10px; }
+    
+    /* DOSYA YÜKLEME KUTULARINI GİZLEME VE KÜÇÜLTME CSS'İ */
+    div[data-testid="stFileUploader"] { padding-bottom: 0rem !important; }
+    section[data-testid="stFileUploadDropzone"] { padding: 1rem !important; min-height: auto !important; }
+    ul[data-testid="stUploadedFileList"] { display: none !important; } /* Yüklenen dosya isimlerini ve o devasa listeyi gizler */
     </style>
 """, unsafe_allow_html=True)
 
@@ -95,9 +100,14 @@ with c2:
     st.caption("📌 Varsa Mevcut Takip Listesini Yükleyin (Opsiyonel)")
     track_file_upload = st.file_uploader("Takip Listesi", type=['xlsx', 'csv'], accept_multiple_files=False, label_visibility="collapsed")
 
+# Yüklenen dosya sayısını küçük bir bilgi olarak göster (Liste gizlendiği için)
+if uploaded_files:
+    st.markdown(f"<span style='font-size:11px; color:#16a085; font-weight:bold;'>✅ {len(uploaded_files)} adet analiz raporu yüklendi.</span>", unsafe_allow_html=True)
+
 # --- ANALİZ VE DASHBOARD ---
 if len(uploaded_files) >= 2:
     with st.spinner("Veriler işleniyor..."):
+        # 1. Raporları Oku
         liste = []
         for f in uploaded_files:
             df = pd.read_excel(f, header=0)
@@ -123,7 +133,7 @@ if len(uploaded_files) >= 2:
         else:
             aktif_df = df_master.copy()
 
-        # 2. Takip Listesini Hafızaya Al
+        # 2. Takip Listesini Hafızaya Al (EKSTRA GÜÇLÜ HATA KORUMASI)
         if "takip_df" not in st.session_state:
             if track_file_upload is not None:
                 try:
@@ -137,15 +147,18 @@ if len(uploaded_files) >= 2:
                         tmp_df['malzeme no'] = tmp_df['malzeme no'].astype(str)
                         st.session_state.takip_df = tmp_df
                     else:
-                        st.error("⚠️ Yüklediğiniz Excel'in içinde 'malzeme no' başlıklı bir sütun bulunamadı. Sisteme boş bir listeyle devam ediliyor.")
+                        st.error("⚠️ Yüklediğiniz Takip Listesi Excel'inde 'malzeme no' başlıklı bir sütun bulunamadı. Boş liste ile devam ediliyor.")
                         st.session_state.takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
                 except Exception as e:
-                    st.error(f"⚠️ Takip dosyası okunurken bir hata oluştu: {e}")
+                    st.error(f"⚠️ Takip dosyası okunurken hata oluştu. Boş liste ile devam ediliyor. (Hata: {e})")
                     st.session_state.takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
             else:
                 st.session_state.takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
         
-        if not st.session_state.takip_df.empty and 'malzeme no' in st.session_state.takip_df.columns:
+        # Ekstra Güvenlik: takip_df içinde malzeme no sütunu yoksa oluştur (KeyError'u kesin engeller)
+        if 'malzeme no' not in st.session_state.takip_df.columns:
+            st.session_state.takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
+        else:
             st.session_state.takip_df['malzeme no'] = st.session_state.takip_df['malzeme no'].astype(str)
 
         tab1, tab2, tab4, tab3, tab5 = st.tabs(["📈 Genel Dashboard", "🏢 Kategoriler", "🏭 Depolar", "🔍 Dive Deep", "📌 Takip Listesi (Export)"])
