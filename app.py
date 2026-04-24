@@ -64,6 +64,9 @@ st.markdown("""
     div[data-testid="stMetricLabel"] > label { font-size: 0.8rem !important; margin-bottom: -0.2rem !important;}
     .stMultiSelect { margin-bottom: -1rem !important; }
     div[data-baseweb="select"] > div { min-height: 30px !important; }
+    
+    /* Ortalanmış tablo başlıkları için ekstra CSS (Streamlit bazen bunu gerektirir) */
+    th.col_heading { text-align: center !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -397,12 +400,10 @@ if len(uploaded_files) >= 2:
                                 return styles
                             st.dataframe(f_with_t.style.apply(lts, axis=1).format({('Stokta Bulunan', t1): "{:.0f}", ('Stokta Bulunan', t2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}), use_container_width=True)
 
-            # --- TAB 5: TAKİP LİSTESİ (RENKLENDİRİLMİŞ SON DURUM) ---
+            # --- TAB 5: TAKİP LİSTESİ ---
             with tab5:
                 st.markdown(f"#### 📁 Kayıt Yolu: `{TRACK_PATH}`")
-                st.info("💡 Takip listesine eklediğiniz ürünlerin 'Malzeme Tanımı' G: Drive dosyasına kalıcı olarak kaydedilir. İleride o ürünün Excel'ini yüklemeseniz bile listede adı silinmez.")
-
-                # Hafızadaki Malzeme Tanımlarını Güncelleme
+                
                 if not st.session_state.takip_df.empty and 'malzeme no' in df_master.columns:
                     track_skus = st.session_state.takip_df['malzeme no'].tolist()
                     hafiza_guncellendi = False
@@ -445,21 +446,29 @@ if len(uploaded_files) >= 2:
                         t_pivot['malzeme no'] = t_pivot['malzeme no'].astype(str)
                         days_cols = sorted([c for c in t_pivot.columns if c != 'malzeme no'])
                         
-                        # Son durum tespiti (Artış / Azalış) - Sadece son iki güne bakarak
+                        # 1) FARK HESAPLAMA SÜTUNU (Son gün - Önceki gün)
+                        def hesapla_fark(row):
+                            if len(days_cols) >= 2:
+                                son_gun_stok = row[days_cols[-1]]
+                                onceki_gun_stok = row[days_cols[-2]]
+                                if pd.notna(son_gun_stok) and pd.notna(onceki_gun_stok):
+                                    return son_gun_stok - onceki_gun_stok
+                            return None
+                        
+                        t_pivot['Fark'] = t_pivot.apply(hesapla_fark, axis=1)
+
+                        # 2) SON DURUM (Artış / Azalış)
                         def hesapla_son_durum(row):
                             if len(days_cols) >= 2:
                                 son_gun_stok = row[days_cols[-1]]
                                 onceki_gun_stok = row[days_cols[-2]]
-                                
-                                # Eğer iki günde de veri yoksa
                                 if pd.isna(son_gun_stok) or pd.isna(onceki_gun_stok): return "Veri Eksik"
                                 
-                                # Pozitif değerler (Kayıp) için mantık
+                                # Pozitifler için
                                 if son_gun_stok > 0 or onceki_gun_stok > 0:
                                     if son_gun_stok > onceki_gun_stok: return "Kayıp Arttı"
                                     elif son_gun_stok < onceki_gun_stok: return "Kayıp Azaldı"
                                     else: return "Sabit"
-                                # Negatif değerler (Buldum) için mantık istersen buraya ekleyebilirsin
                             return "Veri Eksik"
 
                         t_pivot['Son Durum'] = t_pivot.apply(hesapla_son_durum, axis=1)
@@ -471,8 +480,8 @@ if len(uploaded_files) >= 2:
                         final_df = pd.merge(st.session_state.takip_df, t_pivot, on='malzeme no', how='left')
                         final_df = pd.merge(final_df, guncel_veriler, on='malzeme no', how='left')
 
-                        # Tabloyu düzenle
-                        cols_order = ['malzeme no', 'Malzeme Tanımı'] + days_cols + ['Son Durum', 'Güncel_Tutar_TL', 'Eklenme_Tarihi', 'Not']
+                        # Sütunları hizala (Fark sütununu günlerin yanına koyduk)
+                        cols_order = ['malzeme no', 'Malzeme Tanımı'] + days_cols + ['Fark', 'Son Durum', 'Güncel_Tutar_TL', 'Eklenme_Tarihi', 'Not']
                         final_df = final_df[[c for c in cols_order if c in final_df.columns]]
 
                         # Satır Renklendirme Fonksiyonu
@@ -483,11 +492,17 @@ if len(uploaded_files) >= 2:
                                 return 'background-color: #d5f5e3; color: #145a32; font-weight: bold;'
                             return ''
 
-                        # Pandas Styler'ı uygula
+                        # Pandas Styler ile Hizalama (Center) ve Formatlama
                         format_dict = {c: lambda x: f"{x:,.0f}" if pd.notna(x) else "-" for c in days_cols}
+                        format_dict['Fark'] = lambda x: f"{x:+,.0f}" if pd.notna(x) else "-" # +1 veya -2 şeklinde gösterir
                         format_dict['Güncel_Tutar_TL'] = lambda x: format_money(x) if pd.notna(x) else "-"
                         
-                        styled_df = final_df.style.map(color_son_durum, subset=['Son Durum']).format(format_dict)
+                        align_cols = days_cols + ['Fark'] # Ortalanacak sütunlar
+                        
+                        styled_df = (final_df.style
+                                     .map(color_son_durum, subset=['Son Durum'])
+                                     .set_properties(subset=align_cols, **{'text-align': 'center'})
+                                     .format(format_dict))
 
                         st.dataframe(styled_df, use_container_width=True, hide_index=True)
                     else:
