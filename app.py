@@ -48,7 +48,6 @@ st.markdown("""
     h1, h2, h3 { margin-top: 0rem !important; margin-bottom: 0.5rem !important; padding-top: 0rem !important; }
     hr { margin-top: 0.2rem !important; margin-bottom: 0.2rem !important; border-top: 1px solid #d1d8e0;}
     
-    /* DOSYA YÜKLEME ALANINI MİNİMUM BOYUTA İNDİRME */
     div[data-testid="stFileUploader"] { padding: 0px !important; margin-bottom: -15px !important;}
     section[data-testid="stFileUploadDropzone"] { 
         padding: 0.5rem !important; 
@@ -116,7 +115,6 @@ def load_watchlist():
 
 def save_watchlist(df):
     try:
-        # Malzeme Tanımı sütununu da G Drive'a kaydet ki hafızada kalsın
         cols_to_save = [c for c in ['malzeme no', 'Malzeme Tanımı', 'Eklenme_Tarihi', 'Not'] if c in df.columns]
         df[cols_to_save].to_excel(TRACK_PATH, index=False)
         return True
@@ -125,7 +123,11 @@ def save_watchlist(df):
         return False
 
 if "takip_df" not in st.session_state:
-    st.session_state.takip_df = load_watchlist()
+    loaded_df = load_watchlist()
+    if 'malzeme no' not in loaded_df.columns:
+         st.session_state.takip_df = pd.DataFrame(columns=['malzeme no', 'Eklenme_Tarihi', 'Not'])
+    else:
+         st.session_state.takip_df = loaded_df
 
 # --- DOSYA YÜKLEME ---
 uploaded_files = st.file_uploader("📥 Günlük Raporları Buraya Sürükleyin", type=['xlsx'], accept_multiple_files=True, label_visibility="collapsed")
@@ -154,7 +156,9 @@ if len(uploaded_files) >= 2:
         df_master['Toplam Fiyat'] = df_master['Toplam Fiyat'].fillna(0)
         df_master['Kayıp_Tutar'] = df_master.apply(lambda row: abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] > 0 else 0, axis=1)
         df_master['Buldum_Tutar'] = df_master.apply(lambda row: -abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] < 0 else 0, axis=1)
-        son_tarih = df_master['Rapor_Tarihi'].iloc[-1]
+        
+        benzersiz_tarihler = sorted(df_master['Rapor_Tarihi'].unique())
+        son_tarih = benzersiz_tarihler[-1]
         
         depo_col = next((c for c in df_master.columns if any(x in c.lower() for x in ['depo', 'plant', 'tesis', 'lokasyon'])), None)
         
@@ -169,7 +173,7 @@ if len(uploaded_files) >= 2:
         if aktif_df.empty:
             st.warning("⚠️ Lütfen analizleri görmek için yukarıdan en az bir depo seçin.")
         else:
-            tab1, tab2, tab4, tab3, tab5 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🏭 Depolar (Top 20)", "🔍 Dive Deep", "📌 Takip Listesi (Ağ Bağlantılı)"])
+            tab1, tab2, tab4, tab3, tab5 = st.tabs(["📈 Genel Dashboard", "🏢 Kategori Detayı", "🏭 Depolar (Top 20)", "🔍 Dive Deep", "📌 Takip Listesi"])
             pdf_buffer = io.BytesIO()
             excel_buffer = io.BytesIO()
 
@@ -393,12 +397,12 @@ if len(uploaded_files) >= 2:
                                 return styles
                             st.dataframe(f_with_t.style.apply(lts, axis=1).format({('Stokta Bulunan', t1): "{:.0f}", ('Stokta Bulunan', t2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}), use_container_width=True)
 
-            # --- TAB 5: TAKİP LİSTESİ (ZENGİNLEŞTİRİLMİŞ HAFIZA) ---
+            # --- TAB 5: TAKİP LİSTESİ (RENKLENDİRİLMİŞ SON DURUM) ---
             with tab5:
                 st.markdown(f"#### 📁 Kayıt Yolu: `{TRACK_PATH}`")
                 st.info("💡 Takip listesine eklediğiniz ürünlerin 'Malzeme Tanımı' G: Drive dosyasına kalıcı olarak kaydedilir. İleride o ürünün Excel'ini yüklemeseniz bile listede adı silinmez.")
 
-                # Hafızadaki Malzeme Tanımlarını Güncelleme (Geçmişte eksik kalanlar için)
+                # Hafızadaki Malzeme Tanımlarını Güncelleme
                 if not st.session_state.takip_df.empty and 'malzeme no' in df_master.columns:
                     track_skus = st.session_state.takip_df['malzeme no'].tolist()
                     hafiza_guncellendi = False
@@ -436,26 +440,56 @@ if len(uploaded_files) >= 2:
                     t_df = df_master[df_master['malzeme no'].astype(str).isin(track_skus)].copy()
                     
                     if not t_df.empty:
-                        # 1. Gün gün değişimleri çek (21, 22 vb.)
+                        # Gün gün değişimleri çek
                         t_pivot = t_df.pivot_table(index='malzeme no', columns='Rapor_Tarihi', values='Stokta Bulunan', aggfunc='sum').reset_index()
                         t_pivot['malzeme no'] = t_pivot['malzeme no'].astype(str)
+                        days_cols = sorted([c for c in t_pivot.columns if c != 'malzeme no'])
                         
-                        # 2. Son günün toplam tutarını çek
+                        # Son durum tespiti (Artış / Azalış) - Sadece son iki güne bakarak
+                        def hesapla_son_durum(row):
+                            if len(days_cols) >= 2:
+                                son_gun_stok = row[days_cols[-1]]
+                                onceki_gun_stok = row[days_cols[-2]]
+                                
+                                # Eğer iki günde de veri yoksa
+                                if pd.isna(son_gun_stok) or pd.isna(onceki_gun_stok): return "Veri Eksik"
+                                
+                                # Pozitif değerler (Kayıp) için mantık
+                                if son_gun_stok > 0 or onceki_gun_stok > 0:
+                                    if son_gun_stok > onceki_gun_stok: return "Kayıp Arttı"
+                                    elif son_gun_stok < onceki_gun_stok: return "Kayıp Azaldı"
+                                    else: return "Sabit"
+                                # Negatif değerler (Buldum) için mantık istersen buraya ekleyebilirsin
+                            return "Veri Eksik"
+
+                        t_pivot['Son Durum'] = t_pivot.apply(hesapla_son_durum, axis=1)
+
+                        # Son günün toplam tutarını çek
                         guncel_veriler = t_df[t_df['Rapor_Tarihi'] == son_tarih].groupby('malzeme no').agg(Güncel_Tutar_TL=('Toplam Fiyat', 'sum')).reset_index()
 
-                        # 3. Her şeyi G Drive'dan gelen Takip Listesi ile birleştir
+                        # G Drive verisi ile birleştir
                         final_df = pd.merge(st.session_state.takip_df, t_pivot, on='malzeme no', how='left')
                         final_df = pd.merge(final_df, guncel_veriler, on='malzeme no', how='left')
 
-                        # 4. Tabloyu Düzenle (Eğer yüklenmeyen gün varsa - tire koy)
-                        days_cols = sorted([c for c in t_pivot.columns if c != 'malzeme no'])
-                        cols_order = ['malzeme no', 'Malzeme Tanımı'] + days_cols + ['Güncel_Tutar_TL', 'Eklenme_Tarihi', 'Not']
+                        # Tabloyu düzenle
+                        cols_order = ['malzeme no', 'Malzeme Tanımı'] + days_cols + ['Son Durum', 'Güncel_Tutar_TL', 'Eklenme_Tarihi', 'Not']
                         final_df = final_df[[c for c in cols_order if c in final_df.columns]]
 
+                        # Satır Renklendirme Fonksiyonu
+                        def color_son_durum(val):
+                            if val == 'Kayıp Arttı':
+                                return 'background-color: #fadbd8; color: #922b21; font-weight: bold;'
+                            elif val == 'Kayıp Azaldı':
+                                return 'background-color: #d5f5e3; color: #145a32; font-weight: bold;'
+                            return ''
+
+                        # Pandas Styler'ı uygula
                         format_dict = {c: lambda x: f"{x:,.0f}" if pd.notna(x) else "-" for c in days_cols}
                         format_dict['Güncel_Tutar_TL'] = lambda x: format_money(x) if pd.notna(x) else "-"
+                        
+                        styled_df = final_df.style.map(color_son_durum, subset=['Son Durum']).format(format_dict)
 
-                        st.dataframe(final_df.style.format(format_dict), use_container_width=True, hide_index=True)
+                        st.dataframe(styled_df, use_container_width=True, hide_index=True)
                     else:
                         st.dataframe(st.session_state.takip_df, use_container_width=True, hide_index=True)
 
