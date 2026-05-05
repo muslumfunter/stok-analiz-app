@@ -114,11 +114,21 @@ if len(uploaded_files) >= 2:
         for f in uploaded_files:
             df = pd.read_excel(f, header=0)
             df.columns = df.columns.astype(str).str.strip()
-            kisa_tarih = f.name.replace(".xlsx", "")[:2]
-            df['Rapor_Tarihi'] = kisa_tarih
+            
+            # KRONOLOJİK TARİH OKUMA MANTIĞI
+            tarih_str = f.name[:5] # İlk 5 karakteri alır (Örn: 28.04 veya 04.05)
+            df['Rapor_Tarihi'] = tarih_str
+            
+            # Gerçek sıralama yapabilmesi için arka planda zamana çeviriyoruz
+            try:
+                df['Gercek_Tarih'] = pd.to_datetime(tarih_str, format='%d.%m')
+            except:
+                df['Gercek_Tarih'] = pd.to_datetime('1900-01-01')
+                
             liste.append(df)
         
-        df_master = pd.concat(liste, ignore_index=True).sort_values(by='Rapor_Tarihi')
+        # Alfabetik değil, Gerçek Tarihe göre sıralar
+        df_master = pd.concat(liste, ignore_index=True).sort_values(by='Gercek_Tarih')
         
         if 'malzeme no' in df_master.columns:
             df_master['malzeme no'] = df_master['malzeme no'].astype(str)
@@ -129,7 +139,9 @@ if len(uploaded_files) >= 2:
         df_master['Kayıp_Tutar'] = df_master.apply(lambda row: abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] > 0 else 0, axis=1)
         df_master['Buldum_Tutar'] = df_master.apply(lambda row: -abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] < 0 else 0, axis=1)
         
-        benzersiz_tarihler = sorted(df_master['Rapor_Tarihi'].unique())
+        # Günleri kronolojik sıraya göre bir listeye alıyoruz
+        benzersiz_tarihler = df_master['Rapor_Tarihi'].unique().tolist()
+        ilk_tarih = benzersiz_tarihler[0]
         son_tarih = benzersiz_tarihler[-1]
         
         depo_col = next((c for c in df_master.columns if any(x in c.lower() for x in ['depo', 'plant', 'tesis', 'lokasyon'])), None)
@@ -175,11 +187,12 @@ if len(uploaded_files) >= 2:
                     st.markdown("<hr style='margin: 0.2rem 0 !important;'>", unsafe_allow_html=True)
 
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
-                    dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
+                    # Gerçek tarihe göre groupby ve sort
+                    dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi', 'Gercek_Tarih'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
                     
                     cols = st.columns(4)
                     for i, urun in enumerate(izlenecek_urunler):
-                        u_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
+                        u_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Gercek_Tarih')
                         with cols[i]:
                             f_m = go.Figure()
                             f_m.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Kayıp_Adet'], name='Kayıp', marker_color='#e74c3c', text=u_data['Kayıp_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
@@ -198,13 +211,14 @@ if len(uploaded_files) >= 2:
                     with st.expander("📋 Kategori Değişim Özeti Tablosu", expanded=False):
                         ozet_pivot = dash_grouped.pivot_table(index='Ürün Tipi', columns='Rapor_Tarihi', values=['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat'], aggfunc='sum').fillna(0)
                         degisim_df = pd.DataFrame()
-                        if not ozet_pivot.empty and 'Kayıp_Adet' in ozet_pivot:
+                        if not ozet_pivot.empty and 'Kayıp_Adet' in ozet_pivot and ilk_tarih in ozet_pivot['Kayıp_Adet'] and son_tarih in ozet_pivot['Kayıp_Adet']:
                             degisim_df['Ürün Tipi'] = ozet_pivot.index
-                            degisim_df['Kayıp Değişimi (Adet)'] = (ozet_pivot['Kayıp_Adet'].iloc[:, -1] - ozet_pivot['Kayıp_Adet'].iloc[:, 0]).values
-                            degisim_df['Buldum Değişimi (Adet)'] = (ozet_pivot['Buldum_Adet'].iloc[:, -1] - ozet_pivot['Buldum_Adet'].iloc[:, 0]).values
-                            degisim_df['Net Adet Değişimi'] = (ozet_pivot['Stokta Bulunan'].iloc[:, -1] - ozet_pivot['Stokta Bulunan'].iloc[:, 0]).values
-                            degisim_df['Net Tutar Değişimi (TL)'] = (ozet_pivot['Toplam Fiyat'].iloc[:, -1] - ozet_pivot['Toplam Fiyat'].iloc[:, 0]).values
+                            degisim_df['Kayıp Değişimi (Adet)'] = (ozet_pivot['Kayıp_Adet'][son_tarih] - ozet_pivot['Kayıp_Adet'][ilk_tarih]).values
+                            degisim_df['Buldum Değişimi (Adet)'] = (ozet_pivot['Buldum_Adet'][son_tarih] - ozet_pivot['Buldum_Adet'][ilk_tarih]).values
+                            degisim_df['Net Adet Değişimi'] = (ozet_pivot['Stokta Bulunan'][son_tarih] - ozet_pivot['Stokta Bulunan'][ilk_tarih]).values
+                            degisim_df['Net Tutar Değişimi (TL)'] = (ozet_pivot['Toplam Fiyat'][son_tarih] - ozet_pivot['Toplam Fiyat'][ilk_tarih]).values
                             degisim_df = degisim_df[(degisim_df['Kayıp Değişimi (Adet)'] != 0) | (degisim_df['Buldum Değişimi (Adet)'] != 0) | (degisim_df['Net Adet Değişimi'] != 0)].copy()
+                        
                         if degisim_df.empty: st.info("Hareketi olan kategori bulunamadı.")
                         else: st.dataframe(degisim_df.style.format({'Kayıp Değişimi (Adet)': "{:,.0f}", 'Buldum Değişimi (Adet)': "{:,.0f}", 'Net Adet Değişimi': "{:,.0f}", 'Net Tutar Değişimi (TL)': "{:,.0f}"}), use_container_width=True, hide_index=True)
 
@@ -212,7 +226,7 @@ if len(uploaded_files) >= 2:
                     plt.subplots_adjust(hspace=0.4, wspace=0.3)
                     fig1.patch.set_facecolor('#f4f6f9')
                     for i, urun in enumerate(izlenecek_urunler):
-                        urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Rapor_Tarihi')
+                        urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Gercek_Tarih')
                         if not urun_data.empty: 
                             m_colors = get_colors_by_value(urun_data['Stokta Bulunan'])
                             ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=m_colors)
@@ -260,8 +274,8 @@ if len(uploaded_files) >= 2:
                     with col2:
                         st.markdown("**💸 Finansal Değişim (İlk vs Son)**")
                         cp = aktif_df.pivot_table(index='Buying Category Name', columns='Rapor_Tarihi', values='Toplam Fiyat', aggfunc='sum').fillna(0)
-                        if len(cp.columns) > 1:
-                            cp['Fark'] = cp.iloc[:, -1] - cp.iloc[:, 0]
+                        if ilk_tarih in cp.columns and son_tarih in cp.columns:
+                            cp['Fark'] = cp[son_tarih] - cp[ilk_tarih]
                             t10_f = cp.sort_values(by='Fark', key=abs, ascending=False).head(10)
                             f3 = go.Figure(go.Bar(x=t10_f['Fark'], y=t10_f.index, orientation='h', marker_color=get_colors_by_value(t10_f['Fark'])))
                             f3.update_layout(height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
@@ -317,16 +331,25 @@ if len(uploaded_files) >= 2:
                     dp = deep_base_df.pivot_table(index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values=['Stokta Bulunan', 'Birim Fiyat'], aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}).fillna(0)
                     
                     if len(dp.columns.levels[1]) > 1:
-                        dp[('Analiz', 'Fark_Adet')] = dp['Stokta Bulunan'].iloc[:, -1] - dp['Stokta Bulunan'].iloc[:, 0]
+                        if ('Stokta Bulunan', ilk_tarih) in dp.columns and ('Stokta Bulunan', son_tarih) in dp.columns:
+                            dp[('Analiz', 'Fark_Adet')] = dp[('Stokta Bulunan', son_tarih)] - dp[('Stokta Bulunan', ilk_tarih)]
+                        else:
+                            dp[('Analiz', 'Fark_Adet')] = 0
+                            
                         def b_d(r):
-                            if r['Stokta Bulunan'].iloc[-1] == 0: return "EŞİTLENDİ"
+                            if ('Stokta Bulunan', son_tarih) in r and r[('Stokta Bulunan', son_tarih)] == 0: return "EŞİTLENDİ"
                             elif r[('Analiz', 'Fark_Adet')] > 0: return "KAYIP"
                             elif r[('Analiz', 'Fark_Adet')] < 0: return "BULDUM"
                             else: return "SABİT"
+                            
                         dp[('Analiz', 'DURUM')] = dp.apply(b_d, axis=1)
                         gf = dp['Birim Fiyat'].max(axis=1)
-                        dp[('Analiz', 'Güncel_Tutar_TL')] = dp['Stokta Bulunan'].iloc[:, -1] * gf
-                        df_f = dp[(dp['Stokta Bulunan'].iloc[:, -1] != 0) | (dp[('Analiz', 'Fark_Adet')] != 0)].sort_values(by=[('Analiz', 'Güncel_Tutar_TL')], ascending=False)
+                        if ('Stokta Bulunan', son_tarih) in dp.columns:
+                            dp[('Analiz', 'Güncel_Tutar_TL')] = dp[('Stokta Bulunan', son_tarih)] * gf
+                        else:
+                            dp[('Analiz', 'Güncel_Tutar_TL')] = 0
+                            
+                        df_f = dp[(dp[('Stokta Bulunan', son_tarih)] != 0) | (dp[('Analiz', 'Fark_Adet')] != 0)].sort_values(by=[('Analiz', 'Güncel_Tutar_TL')], ascending=False)
                         if 'Birim Fiyat' in df_f.columns.get_level_values(0): df_f = df_f.drop(columns=['Birim Fiyat'])
                         
                         st_i = col_u.multiselect("📊 Ürün Tipi:", options=sorted(df_f.index.get_level_values('Ürün Tipi').unique()))
@@ -339,8 +362,8 @@ if len(uploaded_files) >= 2:
                         if s_d: f_df = f_df[f_df[('Analiz', 'DURUM')].isin(s_d)]
                         if s_sku: f_df = f_df[f_df.index.get_level_values('malzeme no').isin(s_sku)]
                         
-                        t1, t2 = f_df['Stokta Bulunan'].columns[0], f_df['Stokta Bulunan'].columns[-1]
-                        if not f_df.empty:
+                        t1, t2 = ilk_tarih, son_tarih
+                        if not f_df.empty and ('Stokta Bulunan', t1) in f_df.columns and ('Stokta Bulunan', t2) in f_df.columns:
                             total_idx = pd.MultiIndex.from_tuples([('GENEL TOPLAM', '-', '-')], names=f_df.index.names)
                             tr = pd.DataFrame(index=total_idx, columns=f_df.columns)
                             tr[('Stokta Bulunan', t1)], tr[('Stokta Bulunan', t2)] = f_df[('Stokta Bulunan', t1)].sum(), f_df[('Stokta Bulunan', t2)].sum()
@@ -373,10 +396,8 @@ if len(uploaded_files) >= 2:
                 st.markdown("#### 📌 Takip Listesi Yönetimi")
                 st.info("💡 Takip etmek istediğiniz listeyi buraya yükleyin. Tablo üzerinde ekleme/silme yaptıktan sonra en alttaki butondan güncel halini bilgisayarınıza indirmeyi unutmayın.")
                 
-                # Sadece Tab 5'e özel dosya yükleme alanı
                 track_file = st.file_uploader("📂 Mevcut Takip Listenizi Yükleyin (Excel)", type=['xlsx', 'csv'], key="track_uploader")
                 
-                # Yeni dosya yüklendiğinde State'i güncelle
                 if track_file is not None:
                     if st.session_state.get("last_track_file_id") != track_file.file_id:
                         try:
@@ -399,7 +420,7 @@ if len(uploaded_files) >= 2:
                         st.session_state["last_track_file_id"] = track_file.file_id
                         st.rerun()
 
-                # Hafıza Güncellemesi (Yüklü Dosyadaki Eksik Tanımları Doldur)
+                # Hafıza Güncellemesi
                 if not st.session_state.takip_df.empty and 'malzeme no' in df_master.columns:
                     track_skus = st.session_state.takip_df['malzeme no'].tolist()
                     for sku in track_skus:
@@ -435,10 +456,13 @@ if len(uploaded_files) >= 2:
                     t_df = df_master[df_master['malzeme no'].astype(str).isin(track_skus)].copy()
                     
                     if not t_df.empty:
-                        # Gün gün stok verisi
+                        # Günleri alfabetik karıştırmadan doğru kronolojik sırayla alıyoruz
                         t_pivot = t_df.pivot_table(index='malzeme no', columns='Rapor_Tarihi', values='Stokta Bulunan', aggfunc='sum').reset_index()
+                        
+                        # Pivot sonrası sütunları doğru sıraya diz
+                        days_cols = [d for d in benzersiz_tarihler if d in t_pivot.columns]
+                        t_pivot = t_pivot[['malzeme no'] + days_cols]
                         t_pivot['malzeme no'] = t_pivot['malzeme no'].astype(str)
-                        days_cols = sorted([c for c in t_pivot.columns if c != 'malzeme no'])
                         
                         # Fark Hesaplama
                         def hesapla_fark(row):
