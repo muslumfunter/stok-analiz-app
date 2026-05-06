@@ -115,19 +115,18 @@ if len(uploaded_files) >= 2:
             df = pd.read_excel(f, header=0)
             df.columns = df.columns.astype(str).str.strip()
             
-            # KRONOLOJİK TARİH OKUMA MANTIĞI
-            tarih_str = f.name[:5] # İlk 5 karakteri alır (Örn: 28.04 veya 04.05)
+            # --- ZAMAN MAKİNESİ: TARİHLERİ DOĞRU SIRALAMA MANTIĞI ---
+            tarih_str = f.name.replace(".xlsx", "")[:5] # Örn: 28.04 veya 04.05
             df['Rapor_Tarihi'] = tarih_str
-            
-            # Gerçek sıralama yapabilmesi için arka planda zamana çeviriyoruz
             try:
+                # Alfabetik karmaşayı önlemek için gerçek bir tarih objesine çeviriyoruz
                 df['Gercek_Tarih'] = pd.to_datetime(tarih_str, format='%d.%m')
             except:
                 df['Gercek_Tarih'] = pd.to_datetime('1900-01-01')
                 
             liste.append(df)
         
-        # Alfabetik değil, Gerçek Tarihe göre sıralar
+        # Alfabetik değil, KRONOLOJİK sıralama (Eskiden -> Yeniye)
         df_master = pd.concat(liste, ignore_index=True).sort_values(by='Gercek_Tarih')
         
         if 'malzeme no' in df_master.columns:
@@ -139,10 +138,10 @@ if len(uploaded_files) >= 2:
         df_master['Kayıp_Tutar'] = df_master.apply(lambda row: abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] > 0 else 0, axis=1)
         df_master['Buldum_Tutar'] = df_master.apply(lambda row: -abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] < 0 else 0, axis=1)
         
-        # Günleri kronolojik sıraya göre bir listeye alıyoruz
+        # Günleri sıralı listeden alıyoruz (Artık 04.05 her zaman 28.04'ün SAĞINDA kalacak)
         benzersiz_tarihler = df_master['Rapor_Tarihi'].unique().tolist()
         ilk_tarih = benzersiz_tarihler[0]
-        son_tarih = benzersiz_tarihler[-1]
+        son_tarih = benzersiz_tarihler[-1] # Ana dashboard için her zaman EN YENİ tarih
         
         depo_col = next((c for c in df_master.columns if any(x in c.lower() for x in ['depo', 'plant', 'tesis', 'lokasyon'])), None)
         
@@ -187,7 +186,7 @@ if len(uploaded_files) >= 2:
                     st.markdown("<hr style='margin: 0.2rem 0 !important;'>", unsafe_allow_html=True)
 
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
-                    # Gerçek tarihe göre groupby ve sort
+                    # PDF grafikleri için de kronolojik sıralamayı zorunlu kılıyoruz
                     dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi', 'Gercek_Tarih'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
                     
                     cols = st.columns(4)
@@ -208,19 +207,26 @@ if len(uploaded_files) >= 2:
                             f_t.update_xaxes(title_text="Gün", title_font=dict(size=9), tickfont=dict(size=9))
                             st.plotly_chart(f_t, use_container_width=True, key=f"t_d_{i}")
 
-                    with st.expander("📋 Kategori Değişim Özeti Tablosu", expanded=False):
-                        ozet_pivot = dash_grouped.pivot_table(index='Ürün Tipi', columns='Rapor_Tarihi', values=['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat'], aggfunc='sum').fillna(0)
-                        degisim_df = pd.DataFrame()
-                        if not ozet_pivot.empty and 'Kayıp_Adet' in ozet_pivot and ilk_tarih in ozet_pivot['Kayıp_Adet'] and son_tarih in ozet_pivot['Kayıp_Adet']:
-                            degisim_df['Ürün Tipi'] = ozet_pivot.index
-                            degisim_df['Kayıp Değişimi (Adet)'] = (ozet_pivot['Kayıp_Adet'][son_tarih] - ozet_pivot['Kayıp_Adet'][ilk_tarih]).values
-                            degisim_df['Buldum Değişimi (Adet)'] = (ozet_pivot['Buldum_Adet'][son_tarih] - ozet_pivot['Buldum_Adet'][ilk_tarih]).values
-                            degisim_df['Net Adet Değişimi'] = (ozet_pivot['Stokta Bulunan'][son_tarih] - ozet_pivot['Stokta Bulunan'][ilk_tarih]).values
-                            degisim_df['Net Tutar Değişimi (TL)'] = (ozet_pivot['Toplam Fiyat'][son_tarih] - ozet_pivot['Toplam Fiyat'][ilk_tarih]).values
-                            degisim_df = degisim_df[(degisim_df['Kayıp Değişimi (Adet)'] != 0) | (degisim_df['Buldum Değişimi (Adet)'] != 0) | (degisim_df['Net Adet Değişimi'] != 0)].copy()
-                        
-                        if degisim_df.empty: st.info("Hareketi olan kategori bulunamadı.")
-                        else: st.dataframe(degisim_df.style.format({'Kayıp Değişimi (Adet)': "{:,.0f}", 'Buldum Değişimi (Adet)': "{:,.0f}", 'Net Adet Değişimi': "{:,.0f}", 'Net Tutar Değişimi (TL)': "{:,.0f}"}), use_container_width=True, hide_index=True)
+                    # YENİ NESİL: TAMAMEN GÜNCEL KATEGORİ TABLOSU
+                    with st.expander(f"📋 Güncel Kategori Özeti (Gün {son_tarih})", expanded=True):
+                        guncel_dash = dash_grouped[dash_grouped['Rapor_Tarihi'] == son_tarih].copy()
+                        if guncel_dash.empty:
+                            st.info(f"{son_tarih} tarihinde bu kategorilerde veri bulunamadı.")
+                        else:
+                            guncel_dash = guncel_dash[['Ürün Tipi', 'Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat']]
+                            guncel_dash.columns = ['Ürün Tipi', 'Güncel Kayıp (Adet)', 'Güncel Buldum (Adet)', 'Net Adet', 'Net Tutar (TL)']
+                            # Sadece en son günde gerçekten hareketi olanları göster
+                            guncel_dash = guncel_dash[(guncel_dash['Güncel Kayıp (Adet)'] != 0) | (guncel_dash['Güncel Buldum (Adet)'] != 0) | (guncel_dash['Net Adet'] != 0)]
+                            
+                            if guncel_dash.empty:
+                                st.info(f"Gün {son_tarih} için hareketi olan kategori bulunamadı.")
+                            else:
+                                st.dataframe(guncel_dash.style.format({
+                                    'Güncel Kayıp (Adet)': "{:,.0f}", 
+                                    'Güncel Buldum (Adet)': "{:,.0f}", 
+                                    'Net Adet': "{:,.0f}", 
+                                    'Net Tutar (TL)': "{:,.0f}"
+                                }), use_container_width=True, hide_index=True)
 
                     fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(16, 8))
                     plt.subplots_adjust(hspace=0.4, wspace=0.3)
@@ -250,12 +256,14 @@ if len(uploaded_files) >= 2:
                     pdf.savefig(fig1, bbox_inches='tight')
                     plt.close(fig1)
 
-                # --- TAB 2: KATEGORİ DETAYI ---
+                # --- TAB 2: KATEGORİ DETAYI (TAMAMEN GÜNCEL ODAKLI) ---
                 with tab2:
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.markdown("**🔻 Güncel Kayıp En Yüksek İlk 10**")
-                        t10_s = guncel_master_df.groupby('Buying Category Name')['Toplam Fiyat'].sum().sort_values(ascending=False).head(10)
+                        st.markdown(f"**🔻 Güncel Kayıp En Yüksek İlk 10 (Gün {son_tarih})**")
+                        # Sadece Kayıp olanları al
+                        kayip_df = guncel_master_df[guncel_master_df['Kayıp_Tutar'] > 0]
+                        t10_s = kayip_df.groupby('Buying Category Name')['Kayıp_Tutar'].sum().sort_values(ascending=False).head(10)
                         if not t10_s.empty:
                             f2 = go.Figure(go.Bar(x=t10_s.values, y=t10_s.index, orientation='h', marker=dict(color=t10_s.values, colorscale='Reds')))
                             f2.update_layout(yaxis={'categoryorder':'total ascending'}, height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
@@ -265,31 +273,36 @@ if len(uploaded_files) >= 2:
                             fig2.patch.set_facecolor('#f4f6f9')
                             ax_top.set_facecolor('#f4f6f9')
                             sns.barplot(x=t10_s.values, y=t10_s.index, palette='Reds_r', ax=ax_top)
-                            plt.title('GÜNCEL SAYIM AÇIĞI (TL)', fontsize=12, fontweight='bold', color='#2c3e50')
+                            plt.title(f'GÜNCEL KAYIP (TL) - {son_tarih}', fontsize=12, fontweight='bold', color='#2c3e50')
                             ax_top.tick_params(colors='#2c3e50', labelsize=8)
                             label_bars(ax_top, is_money=True)
                             pdf.savefig(fig2, bbox_inches='tight')
                             plt.close(fig2)
+                        else:
+                            st.info("Kayıp kaydı bulunamadı.")
 
                     with col2:
-                        st.markdown("**💸 Finansal Değişim (İlk vs Son)**")
-                        cp = aktif_df.pivot_table(index='Buying Category Name', columns='Rapor_Tarihi', values='Toplam Fiyat', aggfunc='sum').fillna(0)
-                        if ilk_tarih in cp.columns and son_tarih in cp.columns:
-                            cp['Fark'] = cp[son_tarih] - cp[ilk_tarih]
-                            t10_f = cp.sort_values(by='Fark', key=abs, ascending=False).head(10)
-                            f3 = go.Figure(go.Bar(x=t10_f['Fark'], y=t10_f.index, orientation='h', marker_color=get_colors_by_value(t10_f['Fark'])))
-                            f3.update_layout(height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
+                        st.markdown(f"**🟢 Güncel Buldum En Yüksek İlk 10 (Gün {son_tarih})**")
+                        # Sadece Buldum olanları al
+                        buldum_df = guncel_master_df[guncel_master_df['Buldum_Tutar'] < 0].copy()
+                        buldum_df['Buldum_Tutar_Abs'] = buldum_df['Buldum_Tutar'].abs() # Grafikte düzgün görünmesi için mutlak değer
+                        t10_f = buldum_df.groupby('Buying Category Name')['Buldum_Tutar_Abs'].sum().sort_values(ascending=False).head(10)
+                        if not t10_f.empty:
+                            f3 = go.Figure(go.Bar(x=t10_f.values, y=t10_f.index, orientation='h', marker=dict(color=t10_f.values, colorscale='Greens')))
+                            f3.update_layout(yaxis={'categoryorder':'total ascending'}, height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(f3, use_container_width=True)
                             
                             fig3, ax_cat = plt.subplots(figsize=(8, 6))
                             fig3.patch.set_facecolor('#f4f6f9')
                             ax_cat.set_facecolor('#f4f6f9')
-                            sns.barplot(x=t10_f['Fark'], y=t10_f.index, palette=get_colors_by_value(t10_f['Fark']), ax=ax_cat)
-                            plt.title('FİNANSAL DEĞİŞİM (FARK - TL)', fontsize=12, fontweight='bold', color='#2c3e50')
+                            sns.barplot(x=t10_f.values, y=t10_f.index, palette='Greens_r', ax=ax_cat)
+                            plt.title(f'GÜNCEL BULDUM (TL) - {son_tarih}', fontsize=12, fontweight='bold', color='#2c3e50')
                             ax_cat.tick_params(colors='#2c3e50', labelsize=8)
-                            plt.axvline(0, color='#2c3e50', linewidth=1)
+                            label_bars(ax_cat, is_money=True)
                             pdf.savefig(fig3, bbox_inches='tight')
                             plt.close(fig3)
+                        else:
+                            st.info("Buldum kaydı bulunamadı.")
 
                 # --- TAB 4: DEPOLAR TOP 20 ---
                 with tab4:
@@ -369,6 +382,11 @@ if len(uploaded_files) >= 2:
                             tr[('Stokta Bulunan', t1)], tr[('Stokta Bulunan', t2)] = f_df[('Stokta Bulunan', t1)].sum(), f_df[('Stokta Bulunan', t2)].sum()
                             tr[('Analiz', 'Fark_Adet')], tr[('Analiz', 'Güncel_Tutar_TL')] = f_df[('Analiz', 'Fark_Adet')].sum(), f_df[('Analiz', 'Güncel_Tutar_TL')].sum()
                             f_with_t = pd.concat([f_df, tr])
+                            
+                            # Kolonları tarihe göre (t1 -> t2) düzgünce dizmek için
+                            stok_cols = [('Stokta Bulunan', d) for d in benzersiz_tarihler if ('Stokta Bulunan', d) in f_with_t.columns]
+                            analiz_cols = [c for c in f_with_t.columns if c[0] == 'Analiz']
+                            f_with_t = f_with_t[stok_cols + analiz_cols]
                             
                             m_k, m_b = f_df[('Analiz', 'Güncel_Tutar_TL')].max(), f_df[('Analiz', 'Güncel_Tutar_TL')].min()
                             def lts(row):
@@ -456,7 +474,7 @@ if len(uploaded_files) >= 2:
                     t_df = df_master[df_master['malzeme no'].astype(str).isin(track_skus)].copy()
                     
                     if not t_df.empty:
-                        # Günleri alfabetik karıştırmadan doğru kronolojik sırayla alıyoruz
+                        # Günleri alfabetik karıştırmadan DOĞRU KRONOLOJİK sırayla alıyoruz
                         t_pivot = t_df.pivot_table(index='malzeme no', columns='Rapor_Tarihi', values='Stokta Bulunan', aggfunc='sum').reset_index()
                         
                         # Pivot sonrası sütunları doğru sıraya diz
@@ -550,8 +568,8 @@ if len(uploaded_files) >= 2:
             # --- EXCEL EXPORT (ANA RAPOR) ---
             with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                 excel_dolu_mu = False
-                if 'degisim_df' in locals() and not degisim_df.empty:
-                    degisim_df.to_excel(writer, sheet_name='Kategori_Degisim', index=False)
+                if 'guncel_dash' in locals() and not guncel_dash.empty:
+                    guncel_dash.to_excel(writer, sheet_name='Kategori_Guncel', index=False)
                     excel_dolu_mu = True
                 if 'f_with_t' in locals() and not f_with_t.empty:
                     f_with_t.to_excel(writer, sheet_name='Dive_Deep_Analizi')
