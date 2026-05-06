@@ -115,18 +115,17 @@ if len(uploaded_files) >= 2:
             df = pd.read_excel(f, header=0)
             df.columns = df.columns.astype(str).str.strip()
             
-            # --- ZAMAN MAKİNESİ: TARİHLERİ DOĞRU SIRALAMA MANTIĞI ---
-            tarih_str = f.name.replace(".xlsx", "")[:5] # Örn: 28.04 veya 04.05
+            # --- TARİHLERİ DOĞRU SIRALAMA MANTIĞI ---
+            tarih_str = f.name.replace(".xlsx", "")[:5] 
             df['Rapor_Tarihi'] = tarih_str
             try:
-                # Alfabetik karmaşayı önlemek için gerçek bir tarih objesine çeviriyoruz
                 df['Gercek_Tarih'] = pd.to_datetime(tarih_str, format='%d.%m')
             except:
                 df['Gercek_Tarih'] = pd.to_datetime('1900-01-01')
                 
             liste.append(df)
         
-        # Alfabetik değil, KRONOLOJİK sıralama (Eskiden -> Yeniye)
+        # Kronolojik sıralama
         df_master = pd.concat(liste, ignore_index=True).sort_values(by='Gercek_Tarih')
         
         if 'malzeme no' in df_master.columns:
@@ -138,10 +137,12 @@ if len(uploaded_files) >= 2:
         df_master['Kayıp_Tutar'] = df_master.apply(lambda row: abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] > 0 else 0, axis=1)
         df_master['Buldum_Tutar'] = df_master.apply(lambda row: -abs(row['Toplam Fiyat']) if row['Stokta Bulunan'] < 0 else 0, axis=1)
         
-        # Günleri sıralı listeden alıyoruz (Artık 04.05 her zaman 28.04'ün SAĞINDA kalacak)
-        benzersiz_tarihler = df_master['Rapor_Tarihi'].unique().tolist()
+        # Tüm günleri çek (Boş grafikleri sıfırla doldurmak için)
+        all_dates_df = df_master[['Rapor_Tarihi', 'Gercek_Tarih']].drop_duplicates().sort_values('Gercek_Tarih')
+        
+        benzersiz_tarihler = all_dates_df['Rapor_Tarihi'].tolist()
         ilk_tarih = benzersiz_tarihler[0]
-        son_tarih = benzersiz_tarihler[-1] # Ana dashboard için her zaman EN YENİ tarih
+        son_tarih = benzersiz_tarihler[-1]
         
         depo_col = next((c for c in df_master.columns if any(x in c.lower() for x in ['depo', 'plant', 'tesis', 'lokasyon'])), None)
         
@@ -186,28 +187,29 @@ if len(uploaded_files) >= 2:
                     st.markdown("<hr style='margin: 0.2rem 0 !important;'>", unsafe_allow_html=True)
 
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
-                    # PDF grafikleri için de kronolojik sıralamayı zorunlu kılıyoruz
                     dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi', 'Gercek_Tarih'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
                     
                     cols = st.columns(4)
                     for i, urun in enumerate(izlenecek_urunler):
-                        u_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Gercek_Tarih')
+                        # GÖRSEL HATA ÇÖZÜMÜ: Boş günleri 0 ile doldurarak grafik yanılsamasını önlüyoruz.
+                        u_data_raw = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()]
+                        u_data = pd.merge(all_dates_df, u_data_raw, on=['Rapor_Tarihi', 'Gercek_Tarih'], how='left').fillna(0)
+                        
                         with cols[i]:
                             f_m = go.Figure()
                             f_m.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Kayıp_Adet'], name='Kayıp', marker_color='#e74c3c', text=u_data['Kayıp_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
                             f_m.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Buldum_Adet'], name='Buldum', marker_color='#2ecc71', text=u_data['Buldum_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
                             f_m.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br><span style='font-size:10px;'>FARK ADET</span>", margin=dict(t=35, b=0, l=0, r=0), height=140, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50', size=10))
-                            f_m.update_xaxes(visible=False) 
+                            f_m.update_xaxes(type='category', visible=True, tickfont=dict(size=8)) # Tarihleri eksende açıkça gösterdik
                             st.plotly_chart(f_m, use_container_width=True, key=f"s_a_{i}")
                             
                             f_t = go.Figure()
                             f_t.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Kayıp_Tutar'], name='Kayıp T', marker_color='#e74c3c', text=u_data['Kayıp_Tutar'].apply(lambda x: format_money(x) if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
                             f_t.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Buldum_Tutar'], name='Buldum T', marker_color='#2ecc71', text=u_data['Buldum_Tutar'].apply(lambda x: format_money(x) if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
                             f_t.update_layout(barmode='relative', title="<span style='font-size:10px;'>TOPLAM FARK (TL)</span>", margin=dict(t=20, b=0, l=0, r=0), height=140, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50', size=10))
-                            f_t.update_xaxes(title_text="Gün", title_font=dict(size=9), tickfont=dict(size=9))
+                            f_t.update_xaxes(type='category', title_text="Gün", title_font=dict(size=9), tickfont=dict(size=9))
                             st.plotly_chart(f_t, use_container_width=True, key=f"t_d_{i}")
 
-                    # YENİ NESİL: TAMAMEN GÜNCEL KATEGORİ TABLOSU
                     with st.expander(f"📋 Güncel Kategori Özeti (Gün {son_tarih})", expanded=True):
                         guncel_dash = dash_grouped[dash_grouped['Rapor_Tarihi'] == son_tarih].copy()
                         if guncel_dash.empty:
@@ -215,7 +217,6 @@ if len(uploaded_files) >= 2:
                         else:
                             guncel_dash = guncel_dash[['Ürün Tipi', 'Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat']]
                             guncel_dash.columns = ['Ürün Tipi', 'Güncel Kayıp (Adet)', 'Güncel Buldum (Adet)', 'Net Adet', 'Net Tutar (TL)']
-                            # Sadece en son günde gerçekten hareketi olanları göster
                             guncel_dash = guncel_dash[(guncel_dash['Güncel Kayıp (Adet)'] != 0) | (guncel_dash['Güncel Buldum (Adet)'] != 0) | (guncel_dash['Net Adet'] != 0)]
                             
                             if guncel_dash.empty:
@@ -232,18 +233,20 @@ if len(uploaded_files) >= 2:
                     plt.subplots_adjust(hspace=0.4, wspace=0.3)
                     fig1.patch.set_facecolor('#f4f6f9')
                     for i, urun in enumerate(izlenecek_urunler):
-                        urun_data = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()].sort_values('Gercek_Tarih')
-                        if not urun_data.empty: 
-                            m_colors = get_colors_by_value(urun_data['Stokta Bulunan'])
-                            ax_m = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=m_colors)
+                        u_data_raw = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()]
+                        u_data = pd.merge(all_dates_df, u_data_raw, on=['Rapor_Tarihi', 'Gercek_Tarih'], how='left').fillna(0)
+                        
+                        if not u_data.empty: 
+                            m_colors = get_colors_by_value(u_data['Stokta Bulunan'])
+                            ax_m = sns.barplot(data=u_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=m_colors)
                             axes[0, i].set_title(f'{urun.upper()}\nNET FARK ADET', fontsize=10, fontweight='bold', color='#2c3e50')
                             axes[0, i].tick_params(colors='#2c3e50', labelsize=8)
                             axes[0, i].set_facecolor('#f4f6f9')
                             axes[0, i].set_xlabel("Gün", fontsize=8)
                             label_bars(ax_m, is_money=False)
                             
-                            t_colors = get_colors_by_value(urun_data['Toplam Fiyat'])
-                            ax_t = sns.barplot(data=urun_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=t_colors)
+                            t_colors = get_colors_by_value(u_data['Toplam Fiyat'])
+                            ax_t = sns.barplot(data=u_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=t_colors)
                             axes[1, i].set_title(f'NET FARK DEĞERİ (TL)', fontsize=10, fontweight='bold', color='#2c3e50')
                             axes[1, i].tick_params(colors='#2c3e50', labelsize=8)
                             axes[1, i].set_facecolor('#f4f6f9')
@@ -261,7 +264,6 @@ if len(uploaded_files) >= 2:
                     col1, col2 = st.columns(2)
                     with col1:
                         st.markdown(f"**🔻 Güncel Kayıp En Yüksek İlk 10 (Gün {son_tarih})**")
-                        # Sadece Kayıp olanları al
                         kayip_df = guncel_master_df[guncel_master_df['Kayıp_Tutar'] > 0]
                         t10_s = kayip_df.groupby('Buying Category Name')['Kayıp_Tutar'].sum().sort_values(ascending=False).head(10)
                         if not t10_s.empty:
@@ -283,9 +285,8 @@ if len(uploaded_files) >= 2:
 
                     with col2:
                         st.markdown(f"**🟢 Güncel Buldum En Yüksek İlk 10 (Gün {son_tarih})**")
-                        # Sadece Buldum olanları al
                         buldum_df = guncel_master_df[guncel_master_df['Buldum_Tutar'] < 0].copy()
-                        buldum_df['Buldum_Tutar_Abs'] = buldum_df['Buldum_Tutar'].abs() # Grafikte düzgün görünmesi için mutlak değer
+                        buldum_df['Buldum_Tutar_Abs'] = buldum_df['Buldum_Tutar'].abs()
                         t10_f = buldum_df.groupby('Buying Category Name')['Buldum_Tutar_Abs'].sum().sort_values(ascending=False).head(10)
                         if not t10_f.empty:
                             f3 = go.Figure(go.Bar(x=t10_f.values, y=t10_f.index, orientation='h', marker=dict(color=t10_f.values, colorscale='Greens')))
@@ -383,7 +384,6 @@ if len(uploaded_files) >= 2:
                             tr[('Analiz', 'Fark_Adet')], tr[('Analiz', 'Güncel_Tutar_TL')] = f_df[('Analiz', 'Fark_Adet')].sum(), f_df[('Analiz', 'Güncel_Tutar_TL')].sum()
                             f_with_t = pd.concat([f_df, tr])
                             
-                            # Kolonları tarihe göre (t1 -> t2) düzgünce dizmek için
                             stok_cols = [('Stokta Bulunan', d) for d in benzersiz_tarihler if ('Stokta Bulunan', d) in f_with_t.columns]
                             analiz_cols = [c for c in f_with_t.columns if c[0] == 'Analiz']
                             f_with_t = f_with_t[stok_cols + analiz_cols]
@@ -409,7 +409,7 @@ if len(uploaded_files) >= 2:
                                 return styles
                             st.dataframe(f_with_t.style.apply(lts, axis=1).format({('Stokta Bulunan', t1): "{:.0f}", ('Stokta Bulunan', t2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}), use_container_width=True)
 
-            # --- TAB 5: TAKİP LİSTESİ (SEKME İÇİ YÜKLEME VE İNDİRME MANTIĞI) ---
+            # --- TAB 5: TAKİP LİSTESİ ---
             with tab5:
                 st.markdown("#### 📌 Takip Listesi Yönetimi")
                 st.info("💡 Takip etmek istediğiniz listeyi buraya yükleyin. Tablo üzerinde ekleme/silme yaptıktan sonra en alttaki butondan güncel halini bilgisayarınıza indirmeyi unutmayın.")
@@ -438,7 +438,6 @@ if len(uploaded_files) >= 2:
                         st.session_state["last_track_file_id"] = track_file.file_id
                         st.rerun()
 
-                # Hafıza Güncellemesi
                 if not st.session_state.takip_df.empty and 'malzeme no' in df_master.columns:
                     track_skus = st.session_state.takip_df['malzeme no'].tolist()
                     for sku in track_skus:
@@ -448,7 +447,6 @@ if len(uploaded_files) >= 2:
                             if tanim_master != tanim_mevcut and pd.notna(tanim_master):
                                 st.session_state.takip_df.loc[st.session_state.takip_df['malzeme no'] == sku, 'Malzeme Tanımı'] = tanim_master
 
-                # --- 1) Yeni Ürün Ekleme ---
                 with st.expander("➕ Yeni SKU Ekle", expanded=False):
                     if 'malzeme no' in df_master.columns:
                         skular = sorted([str(s) for s in df_master['malzeme no'].unique() if str(s).lower() != 'nan'])
@@ -468,21 +466,17 @@ if len(uploaded_files) >= 2:
                         elif not st.session_state.takip_df.empty and yeni_sku in st.session_state.takip_df['malzeme no'].values:
                             st.warning("Bu malzeme zaten takip listenizde mevcut.")
 
-                # --- 2) Tablo Gösterimi ve Renklendirme ---
                 if not st.session_state.takip_df.empty and 'malzeme no' in df_master.columns:
                     track_skus = st.session_state.takip_df['malzeme no'].tolist()
                     t_df = df_master[df_master['malzeme no'].astype(str).isin(track_skus)].copy()
                     
                     if not t_df.empty:
-                        # Günleri alfabetik karıştırmadan DOĞRU KRONOLOJİK sırayla alıyoruz
                         t_pivot = t_df.pivot_table(index='malzeme no', columns='Rapor_Tarihi', values='Stokta Bulunan', aggfunc='sum').reset_index()
                         
-                        # Pivot sonrası sütunları doğru sıraya diz
                         days_cols = [d for d in benzersiz_tarihler if d in t_pivot.columns]
                         t_pivot = t_pivot[['malzeme no'] + days_cols]
                         t_pivot['malzeme no'] = t_pivot['malzeme no'].astype(str)
                         
-                        # Fark Hesaplama
                         def hesapla_fark(row):
                             if len(days_cols) >= 2:
                                 son_gun = row[days_cols[-1]]
@@ -493,7 +487,6 @@ if len(uploaded_files) >= 2:
                         
                         t_pivot['Fark'] = t_pivot.apply(hesapla_fark, axis=1)
 
-                        # Son Durum Hesaplama
                         def hesapla_son_durum(row):
                             if len(days_cols) >= 2:
                                 son_gun = row[days_cols[-1]]
@@ -536,7 +529,6 @@ if len(uploaded_files) >= 2:
 
                     st.markdown("---")
                     
-                    # --- 3) Silme ve Dışa Aktarma ---
                     with st.expander("🗑️ Listeden Ürün Sil"):
                         sil_sku = st.selectbox("Silinecek Ürün:", options=[""] + st.session_state.takip_df['malzeme no'].tolist())
                         if st.button("Seçiliyi Sil"):
