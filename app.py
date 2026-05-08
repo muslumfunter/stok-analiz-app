@@ -200,21 +200,29 @@ if len(uploaded_files) >= 2:
                             f_t.update_xaxes(type='category', title_text="Gün", title_font=dict(size=9), tickfont=dict(size=9))
                             st.plotly_chart(f_t, use_container_width=True, key=f"t_d_{i}")
 
-                    with st.expander(f"📋 Güncel Kategori Özeti (Gün {son_tarih})", expanded=True):
-                        guncel_dash = dash_grouped[dash_grouped['Rapor_Tarihi'] == son_tarih].copy()
-                        if guncel_dash.empty:
-                            st.info(f"{son_tarih} tarihinde bu kategorilerde veri bulunamadı.")
+                    # YENİ NESİL: SKU DETAYLI KATEGORİ ÖZETİ TABLOSU
+                    with st.expander(f"📋 Güncel Kategori Özeti ve SKU Detayları (Gün {son_tarih})", expanded=True):
+                        guncel_sku_df = guncel_master_df[guncel_master_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])].copy()
+                        
+                        if guncel_sku_df.empty:
+                            st.info(f"{son_tarih} tarihinde takip edilen kategorilerde veri bulunamadı.")
                         else:
-                            guncel_dash = guncel_dash[['Ürün Tipi', 'Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat']]
-                            guncel_dash.columns = ['Ürün Tipi', 'Güncel Kayıp (Adet)', 'Güncel Buldum (Adet)', 'Net Adet', 'Net Tutar (TL)']
-                            guncel_dash = guncel_dash[(guncel_dash['Güncel Kayıp (Adet)'] != 0) | (guncel_dash['Güncel Buldum (Adet)'] != 0) | (guncel_dash['Net Adet'] != 0)]
+                            # SKU (Malzeme) bazında detaylı gruplama
+                            guncel_sku_ozet = guncel_sku_df.groupby(['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'])[['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat']].sum().reset_index()
                             
-                            if guncel_dash.empty:
-                                st.info(f"Gün {son_tarih} için hareketi olan kategori bulunamadı.")
+                            # Sadece hareketi olanları (0 olmayanları) filtrele
+                            guncel_sku_ozet = guncel_sku_ozet[(guncel_sku_ozet['Kayıp_Adet'] != 0) | (guncel_sku_ozet['Buldum_Adet'] != 0) | (guncel_sku_ozet['Stokta Bulunan'] != 0)]
+                            
+                            if guncel_sku_ozet.empty:
+                                st.info(f"Gün {son_tarih} için hareketi olan kategori veya SKU bulunamadı.")
                             else:
-                                st.dataframe(guncel_dash.style.format({
-                                    'Güncel Kayıp (Adet)': "{:,.0f}", 
-                                    'Güncel Buldum (Adet)': "{:,.0f}", 
+                                guncel_sku_ozet.columns = ['Ürün Tipi', 'Malzeme No', 'Malzeme Tanımı', 'Kayıp (Adet)', 'Buldum (Adet)', 'Net Adet', 'Net Tutar (TL)']
+                                # Kategoriye ve Tutara göre sıralama yaparak okunabilirliği artırıyoruz
+                                guncel_sku_ozet = guncel_sku_ozet.sort_values(by=['Ürün Tipi', 'Net Tutar (TL)'], ascending=[True, False])
+                                
+                                st.dataframe(guncel_sku_ozet.style.format({
+                                    'Kayıp (Adet)': "{:,.0f}", 
+                                    'Buldum (Adet)': "{:,.0f}", 
                                     'Net Adet': "{:,.0f}", 
                                     'Net Tutar (TL)': "{:,.0f}"
                                 }), use_container_width=True, hide_index=True)
@@ -411,14 +419,12 @@ if len(uploaded_files) >= 2:
                 if file_0020 and files_other:
                     with st.spinner("0020 Eşitlemesi Hesaplanıyor..."):
                         
-                        # 1. 0020 Dosyasını İşle
                         df_0020 = pd.read_excel(file_0020, header=0)
                         df_0020.columns = df_0020.columns.astype(str).str.strip()
                         df_0020['malzeme no'] = df_0020['malzeme no'].astype(str)
                         df_0020['Stokta Bulunan'] = pd.to_numeric(df_0020['Stokta Bulunan'], errors='coerce').fillna(0)
                         df_0020['Toplam Fiyat'] = pd.to_numeric(df_0020['Toplam Fiyat'], errors='coerce').fillna(0)
                         
-                        # Doğru finansal eşitleme için Birim Fiyatı çekiyoruz
                         df_0020['Birim_Fiyat_Hesap'] = df_0020.apply(lambda r: abs(r['Toplam Fiyat']) / abs(r['Stokta Bulunan']) if r['Stokta Bulunan'] != 0 else 0, axis=1)
                         
                         base_0020 = df_0020.groupby(['malzeme no', 'Malzeme Tanımı']).agg(
@@ -426,7 +432,6 @@ if len(uploaded_files) >= 2:
                             Birim_Fiyat=('Birim_Fiyat_Hesap', 'max')
                         ).reset_index()
                         
-                        # 2. Diğer Depo Dosyalarını İşle
                         liste_other = []
                         for f in files_other:
                             tmp = pd.read_excel(f, header=0)
@@ -444,19 +449,15 @@ if len(uploaded_files) >= 2:
                             Tanimi_Diger=('Malzeme Tanımı', 'first')
                         ).reset_index()
                         
-                        # 3. İki Tabloyu Birleştir (Eşitleme/Nötrleme)
                         df_eq = pd.merge(base_0020, other_grouped, on='malzeme no', how='outer')
                         df_eq['Adet_0020'] = df_eq['Adet_0020'].fillna(0)
                         df_eq['Adet_Diger'] = df_eq['Adet_Diger'].fillna(0)
                         
-                        # Eksik İsimleri ve Fiyatları Tamamla
                         df_eq['Malzeme Tanımı'] = df_eq['Malzeme Tanımı'].combine_first(df_eq['Tanimi_Diger']).fillna("Bilinmiyor")
                         df_eq['Birim_Fiyat_Nihai'] = df_eq['Birim_Fiyat'].combine_first(df_eq['Birim_Fiyat_Diger']).fillna(0)
                         
-                        # Kritik Formül: 0020 ile Diğer depoların toplam stok hareketlerini birbirine ekle
                         df_eq['Sonuc_Adet'] = df_eq['Adet_0020'] + df_eq['Adet_Diger']
                         
-                        # Finansal Etki Hesaplamaları (Tüm Adımlar İçin)
                         def hesapla_tutar_detay(df, adet_kolon):
                             kayip_a = df[adet_kolon].apply(lambda x: x if x > 0 else 0)
                             buldum_a = df[adet_kolon].apply(lambda x: x if x < 0 else 0)
@@ -468,7 +469,6 @@ if len(uploaded_files) >= 2:
                         k_a_d, b_a_d, k_t_d, b_t_d = hesapla_tutar_detay(df_eq, 'Adet_Diger')
                         k_a_s, b_a_s, k_t_s, b_t_s = hesapla_tutar_detay(df_eq, 'Sonuc_Adet')
                         
-                        # 4. GÖRSEL ÇIKTI (ÖZET)
                         st.markdown("<div style='background-color:#fef9e7; padding:10px; border-radius:5px; border-left: 5px solid #f1c40f;'><b>🟡 1. Ana Depo (0020) İlk Durum</b></div>", unsafe_allow_html=True)
                         c1, c2, c3, c4 = st.columns(4)
                         c1.metric("🔻 Kayıp (Adet)", f"{k_a_0:,.0f}")
@@ -492,10 +492,8 @@ if len(uploaded_files) >= 2:
                         
                         st.markdown("---")
                         
-                        # 5. DETAYLI TABLO
                         st.markdown("##### 🔍 Eşitleme Detay Raporu (SKU Bazlı)")
                         
-                        # Sadece hareketi olanları (0 olmayanları) göster
                         df_display = df_eq[(df_eq['Sonuc_Adet'] != 0) | (df_eq['Adet_0020'] != 0) | (df_eq['Adet_Diger'] != 0)].copy()
                         df_display['Nihai Tutar (TL)'] = df_display['Sonuc_Adet'].abs() * df_display['Birim_Fiyat_Nihai']
                         
@@ -524,7 +522,6 @@ if len(uploaded_files) >= 2:
                             'Nihai Tutar (TL)': format_money
                         }), use_container_width=True, hide_index=True)
                         
-                        # Excel İndirme
                         buffer_eq = io.BytesIO()
                         with pd.ExcelWriter(buffer_eq, engine='xlsxwriter') as writer:
                             df_display.to_excel(writer, index=False, sheet_name='0020_Esitleme_Raporu')
@@ -540,8 +537,8 @@ if len(uploaded_files) >= 2:
             # --- EXCEL EXPORT (ANA RAPOR) ---
             with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                 excel_dolu_mu = False
-                if 'guncel_dash' in locals() and not guncel_dash.empty:
-                    guncel_dash.to_excel(writer, sheet_name='Kategori_Guncel', index=False)
+                if 'guncel_sku_ozet' in locals() and not guncel_sku_ozet.empty:
+                    guncel_sku_ozet.to_excel(writer, sheet_name='Kategori_SKU_Guncel', index=False)
                     excel_dolu_mu = True
                 if 'f_with_t' in locals() and not f_with_t.empty:
                     f_with_t.to_excel(writer, sheet_name='Dive_Deep_Analizi')
