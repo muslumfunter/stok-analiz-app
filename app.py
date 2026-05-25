@@ -179,7 +179,7 @@ if len(uploaded_files) >= 2:
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                     dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi', 'Gercek_Tarih'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
                     
-                    # KOMPAKT DÜN-BUGÜN KARTLARI (YAN YANA YENİ TASARIM)
+                    # KOMPAKT DÜN-BUGÜN KARTLARI (YENİ BÜYÜK FONT TASARIMI)
                     cols = st.columns(4)
                     for i, urun in enumerate(izlenecek_urunler):
                         u_data_bugun = dash_grouped[(dash_grouped['Ürün Tipi'].str.lower() == urun.lower()) & (dash_grouped['Rapor_Tarihi'] == son_tarih)]
@@ -196,22 +196,22 @@ if len(uploaded_files) >= 2:
                         b_t_d = u_data_dun['Buldum_Tutar'].sum() if not u_data_dun.empty else 0
 
                         with cols[i]:
-                            dun_html = f"<b>Dün ({dunku_tarih if dunku_tarih else '-'})</b><br>"
-                            dun_html += f"<span style='color:#c0392b; font-weight:bold;'>🔻 K: {k_a_d:.0f} <span style='font-weight:normal; font-size:10px;'>({format_money(k_t_d)})</span></span><br>"
-                            dun_html += f"<span style='color:#1e8449; font-weight:bold;'>🟢 B: {abs(b_a_d):.0f} <span style='font-weight:normal; font-size:10px;'>({format_money(abs(b_t_d))})</span></span>"
+                            dun_html = f"<div style='font-size:14px; margin-bottom:4px; color:#34495e;'><b>Dün ({dunku_tarih if dunku_tarih else '-'})</b></div>"
+                            dun_html += f"<div style='color:#c0392b; font-weight:bold; font-size:15px; margin-bottom:2px;'>🔻 K: {k_a_d:.0f} <span style='font-weight:normal; font-size:13px;'>({format_money(k_t_d)})</span></div>"
+                            dun_html += f"<div style='color:#1e8449; font-weight:bold; font-size:15px;'>🟢 B: {abs(b_a_d):.0f} <span style='font-weight:normal; font-size:13px;'>({format_money(abs(b_t_d))})</span></div>"
 
-                            bugun_html = f"<b>Bugün ({son_tarih})</b><br>"
-                            bugun_html += f"<span style='color:#c0392b; font-weight:bold;'>🔻 K: {k_a_b:.0f} <span style='font-weight:normal; font-size:10px;'>({format_money(k_t_b)})</span></span><br>"
-                            bugun_html += f"<span style='color:#1e8449; font-weight:bold;'>🟢 B: {abs(b_a_b):.0f} <span style='font-weight:normal; font-size:10px;'>({format_money(abs(b_t_b))})</span></span>"
+                            bugun_html = f"<div style='font-size:14px; margin-bottom:4px; color:#34495e;'><b>Bugün ({son_tarih})</b></div>"
+                            bugun_html += f"<div style='color:#c0392b; font-weight:bold; font-size:15px; margin-bottom:2px;'>🔻 K: {k_a_b:.0f} <span style='font-weight:normal; font-size:13px;'>({format_money(k_t_b)})</span></div>"
+                            bugun_html += f"<div style='color:#1e8449; font-weight:bold; font-size:15px;'>🟢 B: {abs(b_a_b):.0f} <span style='font-weight:normal; font-size:13px;'>({format_money(abs(b_t_b))})</span></div>"
 
                             card_html = f"""
-                            <div style='background-color: #ffffff; border: 1px solid #d1d8e0; border-radius: 8px; padding: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); height: 100%; margin-bottom: 15px;'>
-                                <div style='margin-top:0; margin-bottom:8px; color:#2c3e50; text-align:center; font-weight:900; font-size: 13px; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 5px;'>{urun}</div>
-                                <div style='display: flex; justify-content: space-between; font-size: 11px; line-height: 1.5;'>
-                                    <div style='width: 48%; border-right: 1px dashed #d1d8e0; padding-right: 2px;'>
+                            <div style='background-color: #ffffff; border: 1px solid #d1d8e0; border-radius: 8px; padding: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); height: 100%; margin-bottom: 15px;'>
+                                <div style='margin-top:0; margin-bottom:10px; color:#2c3e50; text-align:center; font-weight:900; font-size: 16px; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 8px;'>{urun}</div>
+                                <div style='display: flex; justify-content: space-between; line-height: 1.4;'>
+                                    <div style='width: 48%; border-right: 1px dashed #d1d8e0; padding-right: 5px;'>
                                         {dun_html}
                                     </div>
-                                    <div style='width: 48%; padding-left: 5px;'>
+                                    <div style='width: 48%; padding-left: 8px;'>
                                         {bugun_html}
                                     </div>
                                 </div>
