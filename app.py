@@ -3,7 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.backends.backend_pdf import PdfPages
-import plotly.graph_objects as go
 import io
 from datetime import datetime
 
@@ -134,6 +133,7 @@ if len(uploaded_files) >= 2:
         benzersiz_tarihler = all_dates_df['Rapor_Tarihi'].tolist()
         ilk_tarih = benzersiz_tarihler[0]
         son_tarih = benzersiz_tarihler[-1] 
+        dunku_tarih = benzersiz_tarihler[-2] if len(benzersiz_tarihler) > 1 else None # Dünü bulmak için eklendi
         
         depo_col = next((c for c in df_master.columns if any(x in c.lower() for x in ['depo', 'plant', 'tesis', 'lokasyon'])), None)
         
@@ -164,7 +164,7 @@ if len(uploaded_files) >= 2:
                     
                     if depo_col:
                         depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
-                        html_etiketler = "<div style='display:flex; flex-wrap:wrap; gap:8px; margin-top:5px; margin-bottom:5px;'>"
+                        html_etiketler = "<div style='display:flex; flex-wrap:wrap; gap:8px; margin-top:5px; margin-bottom:15px;'>"
                         for _, row in depo_ozet.iterrows():
                             if str(row[depo_col]).lower() == 'nan' or str(row[depo_col]).lower() == 'none': continue
                             d_kayip_a = row['Kayıp_Adet']
@@ -175,49 +175,58 @@ if len(uploaded_files) >= 2:
                         html_etiketler += "</div>"
                         st.markdown(html_etiketler, unsafe_allow_html=True)
 
-                    st.markdown("<hr style='margin: 0.2rem 0 !important;'>", unsafe_allow_html=True)
-
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                     dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi', 'Gercek_Tarih'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
                     
+                    # YENİ NESİL: GRAFİK YERİNE KOMPAKT DÜN-BUGÜN KARTLARI
                     cols = st.columns(4)
                     for i, urun in enumerate(izlenecek_urunler):
-                        u_data_raw = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()]
-                        u_data = pd.merge(all_dates_df, u_data_raw, on=['Rapor_Tarihi', 'Gercek_Tarih'], how='left').fillna(0)
-                        
-                        with cols[i]:
-                            f_m = go.Figure()
-                            f_m.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Kayıp_Adet'], name='Kayıp', marker_color='#e74c3c', text=u_data['Kayıp_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
-                            f_m.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Buldum_Adet'], name='Buldum', marker_color='#2ecc71', text=u_data['Buldum_Adet'].apply(lambda x: f"{x:.0f}" if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
-                            f_m.update_layout(barmode='relative', title=f"<b>{urun.upper()}</b><br><span style='font-size:10px;'>FARK ADET</span>", margin=dict(t=35, b=0, l=0, r=0), height=140, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50', size=10))
-                            f_m.update_xaxes(type='category', visible=True, tickfont=dict(size=8))
-                            st.plotly_chart(f_m, use_container_width=True, key=f"s_a_{i}")
-                            
-                            f_t = go.Figure()
-                            f_t.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Kayıp_Tutar'], name='Kayıp T', marker_color='#e74c3c', text=u_data['Kayıp_Tutar'].apply(lambda x: format_money(x) if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
-                            f_t.add_trace(go.Bar(x=u_data['Rapor_Tarihi'], y=u_data['Buldum_Tutar'], name='Buldum T', marker_color='#2ecc71', text=u_data['Buldum_Tutar'].apply(lambda x: format_money(x) if x != 0 else ""), textposition='auto', textfont=dict(size=9)))
-                            f_t.update_layout(barmode='relative', title="<span style='font-size:10px;'>TOPLAM FARK (TL)</span>", margin=dict(t=20, b=0, l=0, r=0), height=140, showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50', size=10))
-                            f_t.update_xaxes(type='category', title_text="Gün", title_font=dict(size=9), tickfont=dict(size=9))
-                            st.plotly_chart(f_t, use_container_width=True, key=f"t_d_{i}")
+                        u_data_bugun = dash_grouped[(dash_grouped['Ürün Tipi'].str.lower() == urun.lower()) & (dash_grouped['Rapor_Tarihi'] == son_tarih)]
+                        u_data_dun = dash_grouped[(dash_grouped['Ürün Tipi'].str.lower() == urun.lower()) & (dash_grouped['Rapor_Tarihi'] == dunku_tarih)] if dunku_tarih else pd.DataFrame()
 
-                    # YENİ NESİL: SKU DETAYLI KATEGORİ ÖZETİ TABLOSU
+                        k_a_b = u_data_bugun['Kayıp_Adet'].sum() if not u_data_bugun.empty else 0
+                        b_a_b = u_data_bugun['Buldum_Adet'].sum() if not u_data_bugun.empty else 0
+                        k_t_b = u_data_bugun['Kayıp_Tutar'].sum() if not u_data_bugun.empty else 0
+                        b_t_b = u_data_bugun['Buldum_Tutar'].sum() if not u_data_bugun.empty else 0
+
+                        k_a_d = u_data_dun['Kayıp_Adet'].sum() if not u_data_dun.empty else 0
+                        b_a_d = u_data_dun['Buldum_Adet'].sum() if not u_data_dun.empty else 0
+                        k_t_d = u_data_dun['Kayıp_Tutar'].sum() if not u_data_dun.empty else 0
+                        b_t_d = u_data_dun['Buldum_Tutar'].sum() if not u_data_dun.empty else 0
+
+                        with cols[i]:
+                            dun_html = f"<div style='border-bottom: 1px dashed #d1d8e0; margin-bottom: 5px; padding-bottom: 5px;'><b>Dün ({dunku_tarih if dunku_tarih else '-'})</b><br>"
+                            dun_html += f"<span style='color:#c0392b; font-weight:bold;'>🔻 K: {k_a_d:.0f} <span style='font-weight:normal; font-size:10px;'>({format_money(k_t_d)})</span></span><br>"
+                            dun_html += f"<span style='color:#1e8449; font-weight:bold;'>🟢 B: {abs(b_a_d):.0f} <span style='font-weight:normal; font-size:10px;'>({format_money(abs(b_t_d))})</span></span></div>"
+
+                            bugun_html = f"<div><b>Bugün ({son_tarih})</b><br>"
+                            bugun_html += f"<span style='color:#c0392b; font-weight:bold;'>🔻 K: {k_a_b:.0f} <span style='font-weight:normal; font-size:10px;'>({format_money(k_t_b)})</span></span><br>"
+                            bugun_html += f"<span style='color:#1e8449; font-weight:bold;'>🟢 B: {abs(b_a_b):.0f} <span style='font-weight:normal; font-size:10px;'>({format_money(abs(b_t_b))})</span></span></div>"
+
+                            card_html = f"""
+                            <div style='background-color: #ffffff; border: 1px solid #d1d8e0; border-radius: 8px; padding: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); height: 100%; margin-bottom: 15px;'>
+                                <div style='margin-top:0; margin-bottom:8px; color:#2c3e50; text-align:center; font-weight:900; font-size: 13px; text-transform: uppercase;'>{urun}</div>
+                                <div style='font-size: 12px; line-height: 1.4;'>
+                                    {dun_html}
+                                    {bugun_html}
+                                </div>
+                            </div>
+                            """
+                            st.markdown(card_html, unsafe_allow_html=True)
+
                     with st.expander(f"📋 Güncel Kategori Özeti ve SKU Detayları (Gün {son_tarih})", expanded=True):
                         guncel_sku_df = guncel_master_df[guncel_master_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])].copy()
                         
                         if guncel_sku_df.empty:
                             st.info(f"{son_tarih} tarihinde takip edilen kategorilerde veri bulunamadı.")
                         else:
-                            # SKU (Malzeme) bazında detaylı gruplama
                             guncel_sku_ozet = guncel_sku_df.groupby(['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'])[['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat']].sum().reset_index()
-                            
-                            # Sadece hareketi olanları (0 olmayanları) filtrele
                             guncel_sku_ozet = guncel_sku_ozet[(guncel_sku_ozet['Kayıp_Adet'] != 0) | (guncel_sku_ozet['Buldum_Adet'] != 0) | (guncel_sku_ozet['Stokta Bulunan'] != 0)]
                             
                             if guncel_sku_ozet.empty:
                                 st.info(f"Gün {son_tarih} için hareketi olan kategori veya SKU bulunamadı.")
                             else:
                                 guncel_sku_ozet.columns = ['Ürün Tipi', 'Malzeme No', 'Malzeme Tanımı', 'Kayıp (Adet)', 'Buldum (Adet)', 'Net Adet', 'Net Tutar (TL)']
-                                # Kategoriye ve Tutara göre sıralama yaparak okunabilirliği artırıyoruz
                                 guncel_sku_ozet = guncel_sku_ozet.sort_values(by=['Ürün Tipi', 'Net Tutar (TL)'], ascending=[True, False])
                                 
                                 st.dataframe(guncel_sku_ozet.style.format({
@@ -226,36 +235,6 @@ if len(uploaded_files) >= 2:
                                     'Net Adet': "{:,.0f}", 
                                     'Net Tutar (TL)': "{:,.0f}"
                                 }), use_container_width=True, hide_index=True)
-
-                    fig1, axes = plt.subplots(nrows=2, ncols=4, figsize=(16, 8))
-                    plt.subplots_adjust(hspace=0.4, wspace=0.3)
-                    fig1.patch.set_facecolor('#f4f6f9')
-                    for i, urun in enumerate(izlenecek_urunler):
-                        u_data_raw = dash_grouped[dash_grouped['Ürün Tipi'].str.lower() == urun.lower()]
-                        u_data = pd.merge(all_dates_df, u_data_raw, on=['Rapor_Tarihi', 'Gercek_Tarih'], how='left').fillna(0)
-                        
-                        if not u_data.empty: 
-                            m_colors = get_colors_by_value(u_data['Stokta Bulunan'])
-                            ax_m = sns.barplot(data=u_data, x='Rapor_Tarihi', y='Stokta Bulunan', ax=axes[0, i], palette=m_colors)
-                            axes[0, i].set_title(f'{urun.upper()}\nNET FARK ADET', fontsize=10, fontweight='bold', color='#2c3e50')
-                            axes[0, i].tick_params(colors='#2c3e50', labelsize=8)
-                            axes[0, i].set_facecolor('#f4f6f9')
-                            axes[0, i].set_xlabel("Gün", fontsize=8)
-                            label_bars(ax_m, is_money=False)
-                            
-                            t_colors = get_colors_by_value(u_data['Toplam Fiyat'])
-                            ax_t = sns.barplot(data=u_data, x='Rapor_Tarihi', y='Toplam Fiyat', ax=axes[1, i], palette=t_colors)
-                            axes[1, i].set_title(f'NET FARK DEĞERİ (TL)', fontsize=10, fontweight='bold', color='#2c3e50')
-                            axes[1, i].tick_params(colors='#2c3e50', labelsize=8)
-                            axes[1, i].set_facecolor('#f4f6f9')
-                            axes[1, i].set_xlabel("Gün", fontsize=8)
-                            label_bars(ax_t, is_money=True)
-                        else:
-                            axes[0, i].set_title(f'{urun.upper()}\n(Veri Yok)', fontsize=10, fontweight='bold')
-                            axes[1, i].set_title(f'(Veri Yok)', fontsize=10, fontweight='bold')
-                    plt.suptitle(f'SAYIM FARKI DASHBOARD - Gün {son_tarih}\n(Kırmızı: Kayıp | Yeşil: Buldum)', fontsize=16, fontweight='bold', color='#2c3e50', y=0.98)
-                    pdf.savefig(fig1, bbox_inches='tight')
-                    plt.close(fig1)
 
                 # --- TAB 2: KATEGORİ DETAYI ---
                 with tab2:
