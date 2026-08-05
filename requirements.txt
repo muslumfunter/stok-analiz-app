@@ -2,6 +2,6 @@ streamlit
 pandas
 matplotlib
 seaborn
+plotly
 openpyxl
 xlsxwriter
-plotly
