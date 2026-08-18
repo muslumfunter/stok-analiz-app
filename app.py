@@ -179,7 +179,6 @@ if len(uploaded_files) >= 2:
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                     dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi', 'Gercek_Tarih'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
                     
-                    # KOMPAKT DÜN-BUGÜN KARTLARI (YENİ BÜYÜK FONT TASARIMI)
                     cols = st.columns(4)
                     for i, urun in enumerate(izlenecek_urunler):
                         u_data_bugun = dash_grouped[(dash_grouped['Ürün Tipi'].str.lower() == urun.lower()) & (dash_grouped['Rapor_Tarihi'] == son_tarih)]
@@ -252,16 +251,6 @@ if len(uploaded_files) >= 2:
                             f2 = go.Figure(go.Bar(x=t10_s.values, y=t10_s.index, orientation='h', marker=dict(color=t10_s.values, colorscale='Reds')))
                             f2.update_layout(yaxis={'categoryorder':'total ascending'}, height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(f2, use_container_width=True)
-                            
-                            fig2, ax_top = plt.subplots(figsize=(8, 6))
-                            fig2.patch.set_facecolor('#f4f6f9')
-                            ax_top.set_facecolor('#f4f6f9')
-                            sns.barplot(x=t10_s.values, y=t10_s.index, palette='Reds_r', ax=ax_top)
-                            plt.title(f'GÜNCEL KAYIP (TL) - {son_tarih}', fontsize=12, fontweight='bold', color='#2c3e50')
-                            ax_top.tick_params(colors='#2c3e50', labelsize=8)
-                            label_bars(ax_top, is_money=True)
-                            pdf.savefig(fig2, bbox_inches='tight')
-                            plt.close(fig2)
                         else:
                             st.info("Kayıp kaydı bulunamadı.")
 
@@ -274,16 +263,6 @@ if len(uploaded_files) >= 2:
                             f3 = go.Figure(go.Bar(x=t10_f.values, y=t10_f.index, orientation='h', marker=dict(color=t10_f.values, colorscale='Greens')))
                             f3.update_layout(yaxis={'categoryorder':'total ascending'}, height=400, margin=dict(t=0, l=0, r=0, b=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#2c3e50'))
                             st.plotly_chart(f3, use_container_width=True)
-                            
-                            fig3, ax_cat = plt.subplots(figsize=(8, 6))
-                            fig3.patch.set_facecolor('#f4f6f9')
-                            ax_cat.set_facecolor('#f4f6f9')
-                            sns.barplot(x=t10_f.values, y=t10_f.index, palette='Greens_r', ax=ax_cat)
-                            plt.title(f'GÜNCEL BULDUM (TL) - {son_tarih}', fontsize=12, fontweight='bold', color='#2c3e50')
-                            ax_cat.tick_params(colors='#2c3e50', labelsize=8)
-                            label_bars(ax_cat, is_money=True)
-                            pdf.savefig(fig3, bbox_inches='tight')
-                            plt.close(fig3)
                         else:
                             st.info("Buldum kaydı bulunamadı.")
 
@@ -326,70 +305,79 @@ if len(uploaded_files) >= 2:
                         
                     dp = deep_base_df.pivot_table(index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values=['Stokta Bulunan', 'Birim Fiyat'], aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}).fillna(0)
                     
-                    if len(dp.columns.levels[1]) > 1:
-                        if ('Stokta Bulunan', ilk_tarih) in dp.columns and ('Stokta Bulunan', son_tarih) in dp.columns:
-                            dp[('Analiz', 'Fark_Adet')] = dp[('Stokta Bulunan', son_tarih)] - dp[('Stokta Bulunan', ilk_tarih)]
-                        else:
-                            dp[('Analiz', 'Fark_Adet')] = 0
-                            
-                        def b_d(r):
-                            if ('Stokta Bulunan', son_tarih) in r and r[('Stokta Bulunan', son_tarih)] == 0: return "EŞİTLENDİ"
-                            elif r[('Analiz', 'Fark_Adet')] > 0: return "KAYIP"
-                            elif r[('Analiz', 'Fark_Adet')] < 0: return "BULDUM"
-                            else: return "SABİT"
-                            
-                        dp[('Analiz', 'DURUM')] = dp.apply(b_d, axis=1)
-                        gf = dp['Birim Fiyat'].max(axis=1)
-                        if ('Stokta Bulunan', son_tarih) in dp.columns:
-                            dp[('Analiz', 'Güncel_Tutar_TL')] = dp[('Stokta Bulunan', son_tarih)] * gf
-                        else:
-                            dp[('Analiz', 'Güncel_Tutar_TL')] = 0
-                            
-                        df_f = dp[(dp[('Stokta Bulunan', son_tarih)] != 0) | (dp[('Analiz', 'Fark_Adet')] != 0)].sort_values(by=[('Analiz', 'Güncel_Tutar_TL')], ascending=False)
-                        if 'Birim Fiyat' in df_f.columns.get_level_values(0): df_f = df_f.drop(columns=['Birim Fiyat'])
+                    # DÜZELTME BURADA: Tek gün yüklenmesi sorununu çözen mantık güncellendi
+                    if ('Stokta Bulunan', ilk_tarih) in dp.columns and ('Stokta Bulunan', son_tarih) in dp.columns and ilk_tarih != son_tarih:
+                        dp[('Analiz', 'Fark_Adet')] = dp[('Stokta Bulunan', son_tarih)] - dp[('Stokta Bulunan', ilk_tarih)]
+                    else:
+                        dp[('Analiz', 'Fark_Adet')] = 0
                         
-                        st_i = col_u.multiselect("📊 Ürün Tipi:", options=sorted(df_f.index.get_level_values('Ürün Tipi').unique()))
-                        m_d = df_f[('Analiz', 'DURUM')].unique().tolist()
-                        s_d = col_dr.multiselect("📌 Durum:", options=m_d, default=[d for d in ["KAYIP", "BULDUM", "EŞİTLENDİ", "SABİT"] if d in m_d])
-                        s_sku = col_s.multiselect("🔍 Malzeme No:", options=df_f.index.get_level_values('malzeme no').unique())
+                    def b_d(r):
+                        if ('Stokta Bulunan', son_tarih) in r and r[('Stokta Bulunan', son_tarih)] == 0: return "EŞİTLENDİ"
+                        elif r[('Analiz', 'Fark_Adet')] > 0: return "KAYIP"
+                        elif r[('Analiz', 'Fark_Adet')] < 0: return "BULDUM"
+                        else: return "SABİT"
                         
-                        f_df = df_f.copy()
-                        if st_i: f_df = f_df[f_df.index.get_level_values('Ürün Tipi').isin(st_i)]
-                        if s_d: f_df = f_df[f_df[('Analiz', 'DURUM')].isin(s_d)]
-                        if s_sku: f_df = f_df[f_df.index.get_level_values('malzeme no').isin(s_sku)]
+                    dp[('Analiz', 'DURUM')] = dp.apply(b_d, axis=1)
+                    gf = dp['Birim Fiyat'].max(axis=1)
+                    
+                    if ('Stokta Bulunan', son_tarih) in dp.columns:
+                        dp[('Analiz', 'Güncel_Tutar_TL')] = dp[('Stokta Bulunan', son_tarih)] * gf
+                    else:
+                        dp[('Analiz', 'Güncel_Tutar_TL')] = 0
                         
-                        t1, t2 = ilk_tarih, son_tarih
-                        if not f_df.empty and ('Stokta Bulunan', t1) in f_df.columns and ('Stokta Bulunan', t2) in f_df.columns:
-                            total_idx = pd.MultiIndex.from_tuples([('GENEL TOPLAM', '-', '-')], names=f_df.index.names)
-                            tr = pd.DataFrame(index=total_idx, columns=f_df.columns)
-                            tr[('Stokta Bulunan', t1)], tr[('Stokta Bulunan', t2)] = f_df[('Stokta Bulunan', t1)].sum(), f_df[('Stokta Bulunan', t2)].sum()
-                            tr[('Analiz', 'Fark_Adet')], tr[('Analiz', 'Güncel_Tutar_TL')] = f_df[('Analiz', 'Fark_Adet')].sum(), f_df[('Analiz', 'Güncel_Tutar_TL')].sum()
-                            f_with_t = pd.concat([f_df, tr])
-                            
-                            stok_cols = [('Stokta Bulunan', d) for d in benzersiz_tarihler if ('Stokta Bulunan', d) in f_with_t.columns]
-                            analiz_cols = [c for c in f_with_t.columns if c[0] == 'Analiz']
-                            f_with_t = f_with_t[stok_cols + analiz_cols]
-                            
-                            m_k, m_b = f_df[('Analiz', 'Güncel_Tutar_TL')].max(), f_df[('Analiz', 'Güncel_Tutar_TL')].min()
-                            def lts(row):
-                                styles = []
-                                if row.name[0] == 'GENEL TOPLAM': return ['background-color: #2c3e50; color: white; font-weight: bold;' for _ in row.index]
-                                tutar, durum = row[('Analiz', 'Güncel_Tutar_TL')], row[('Analiz', 'DURUM')]
-                                for col in row.index:
-                                    if col[0] == 'Stokta Bulunan' and col[1] == t1: styles.append('background-color: #f1f2f6; color: #7f8c8d;')
-                                    elif col[0] == 'Stokta Bulunan' and col[1] == t2: styles.append('font-weight: bold;')
-                                    elif col[0] == 'Analiz':
-                                        if durum == 'EŞİTLENDİ': styles.append('background-color: #d6eaf8; color: #1b4f72; font-weight: bold;')
-                                        elif tutar > 0:
-                                            a = 0.1 + (0.4 * (tutar / m_k)) if m_k > 0 else 0.2
-                                            styles.append(f'background-color: rgba(231, 76, 60, {a}); color: #7b241c; font-weight: bold;')
-                                        elif tutar < 0:
-                                            a = 0.1 + (0.4 * (tutar / m_b)) if m_b < 0 else 0.2
-                                            styles.append(f'background-color: rgba(46, 204, 113, {a}); color: #145a32; font-weight: bold;')
-                                        else: styles.append('')
+                    df_f = dp[(dp[('Stokta Bulunan', son_tarih)] != 0) | (dp[('Analiz', 'Fark_Adet')] != 0)].sort_values(by=[('Analiz', 'Güncel_Tutar_TL')], ascending=False)
+                    if 'Birim Fiyat' in df_f.columns.get_level_values(0): df_f = df_f.drop(columns=['Birim Fiyat'])
+                    
+                    st_i = col_u.multiselect("📊 Ürün Tipi:", options=sorted(df_f.index.get_level_values('Ürün Tipi').unique()))
+                    m_d = df_f[('Analiz', 'DURUM')].unique().tolist()
+                    s_d = col_dr.multiselect("📌 Durum:", options=m_d, default=[d for d in ["KAYIP", "BULDUM", "EŞİTLENDİ", "SABİT"] if d in m_d])
+                    s_sku = col_s.multiselect("🔍 Malzeme No:", options=df_f.index.get_level_values('malzeme no').unique())
+                    
+                    f_df = df_f.copy()
+                    if st_i: f_df = f_df[f_df.index.get_level_values('Ürün Tipi').isin(st_i)]
+                    if s_d: f_df = f_df[f_df[('Analiz', 'DURUM')].isin(s_d)]
+                    if s_sku: f_df = f_df[f_df.index.get_level_values('malzeme no').isin(s_sku)]
+                    
+                    t1, t2 = ilk_tarih, son_tarih
+                    if not f_df.empty and ('Stokta Bulunan', t1) in f_df.columns:
+                        total_idx = pd.MultiIndex.from_tuples([('GENEL TOPLAM', '-', '-')], names=f_df.index.names)
+                        tr = pd.DataFrame(index=total_idx, columns=f_df.columns)
+                        tr[('Stokta Bulunan', t1)] = f_df[('Stokta Bulunan', t1)].sum()
+                        if t1 != t2 and ('Stokta Bulunan', t2) in f_df.columns:
+                            tr[('Stokta Bulunan', t2)] = f_df[('Stokta Bulunan', t2)].sum()
+                        tr[('Analiz', 'Fark_Adet')] = f_df[('Analiz', 'Fark_Adet')].sum()
+                        tr[('Analiz', 'Güncel_Tutar_TL')] = f_df[('Analiz', 'Güncel_Tutar_TL')].sum()
+                        f_with_t = pd.concat([f_df, tr])
+                        
+                        stok_cols = [('Stokta Bulunan', d) for d in benzersiz_tarihler if ('Stokta Bulunan', d) in f_with_t.columns]
+                        analiz_cols = [c for c in f_with_t.columns if c[0] == 'Analiz']
+                        f_with_t = f_with_t[stok_cols + analiz_cols]
+                        
+                        m_k, m_b = f_df[('Analiz', 'Güncel_Tutar_TL')].max(), f_df[('Analiz', 'Güncel_Tutar_TL')].min()
+                        def lts(row):
+                            styles = []
+                            if row.name[0] == 'GENEL TOPLAM': return ['background-color: #2c3e50; color: white; font-weight: bold;' for _ in row.index]
+                            tutar, durum = row[('Analiz', 'Güncel_Tutar_TL')], row[('Analiz', 'DURUM')]
+                            for col in row.index:
+                                if col[0] == 'Stokta Bulunan' and col[1] == t1 and t1 != t2: styles.append('background-color: #f1f2f6; color: #7f8c8d;')
+                                elif col[0] == 'Stokta Bulunan' and col[1] == t2: styles.append('font-weight: bold;')
+                                elif col[0] == 'Analiz':
+                                    if durum == 'EŞİTLENDİ': styles.append('background-color: #d6eaf8; color: #1b4f72; font-weight: bold;')
+                                    elif tutar > 0:
+                                        a = 0.1 + (0.4 * (tutar / m_k)) if m_k > 0 else 0.2
+                                        styles.append(f'background-color: rgba(231, 76, 60, {a}); color: #7b241c; font-weight: bold;')
+                                    elif tutar < 0:
+                                        a = 0.1 + (0.4 * (tutar / m_b)) if m_b < 0 else 0.2
+                                        styles.append(f'background-color: rgba(46, 204, 113, {a}); color: #145a32; font-weight: bold;')
                                     else: styles.append('')
-                                return styles
-                            st.dataframe(f_with_t.style.apply(lts, axis=1).format({('Stokta Bulunan', t1): "{:.0f}", ('Stokta Bulunan', t2): "{:.0f}", ('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}), use_container_width=True)
+                                else: styles.append('')
+                            return styles
+                        
+                        format_dict = {('Analiz', 'Fark_Adet'): "{:.0f}", ('Analiz', 'Güncel_Tutar_TL'): format_money}
+                        if ('Stokta Bulunan', t1) in f_with_t.columns: format_dict[('Stokta Bulunan', t1)] = "{:.0f}"
+                        if t1 != t2 and ('Stokta Bulunan', t2) in f_with_t.columns: format_dict[('Stokta Bulunan', t2)] = "{:.0f}"
+                        
+                        st.dataframe(f_with_t.style.apply(lts, axis=1).format(format_dict), use_container_width=True)
 
             # --- TAB 5: 0020 EŞİTLEME ANALİZİ YENİ SEKMESİ ---
             with tab5:
