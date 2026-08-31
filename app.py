@@ -224,13 +224,24 @@ if len(uploaded_files) >= 2:
                         if guncel_sku_df.empty:
                             st.info(f"{son_tarih} tarihinde takip edilen kategorilerde veri bulunamadı.")
                         else:
-                            guncel_sku_ozet = guncel_sku_df.groupby(['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'])[['Kayıp_Adet', 'Buldum_Adet', 'Stokta Bulunan', 'Toplam Fiyat']].sum().reset_index()
-                            guncel_sku_ozet = guncel_sku_ozet[(guncel_sku_ozet['Kayıp_Adet'] != 0) | (guncel_sku_ozet['Buldum_Adet'] != 0) | (guncel_sku_ozet['Stokta Bulunan'] != 0)]
+                            # 1. DÜZELTME: Doğrudan Net Adet ve Net Fiyatı topla (Eşitleme/Nötrleme Mantığı)
+                            guncel_sku_ozet = guncel_sku_df.groupby(['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'])[['Stokta Bulunan', 'Toplam Fiyat']].sum().reset_index()
+                            
+                            # 2. DÜZELTME: Depolar arası eşitlenmiş (Net Adet = 0) kayıtları tablodan tamamen at
+                            guncel_sku_ozet = guncel_sku_ozet[guncel_sku_ozet['Stokta Bulunan'] != 0].copy()
                             
                             if guncel_sku_ozet.empty:
-                                st.info(f"Gün {son_tarih} için hareketi olan kategori veya SKU bulunamadı.")
+                                st.info(f"Gün {son_tarih} için tüm depolar arası eşitlenmiş olup, net hareketi olan SKU bulunamadı.")
                             else:
-                                guncel_sku_ozet.columns = ['Ürün Tipi', 'Malzeme No', 'Malzeme Tanımı', 'Kayıp (Adet)', 'Buldum (Adet)', 'Net Adet', 'Net Tutar (TL)']
+                                # 3. DÜZELTME: Geriye kalan Net rakamlar üzerinden Kayıp ve Buldum atamasını yeniden yap
+                                guncel_sku_ozet['Kayıp (Adet)'] = guncel_sku_ozet['Stokta Bulunan'].apply(lambda x: x if x > 0 else 0)
+                                guncel_sku_ozet['Buldum (Adet)'] = guncel_sku_ozet['Stokta Bulunan'].apply(lambda x: x if x < 0 else 0)
+                                
+                                guncel_sku_ozet.columns = ['Ürün Tipi', 'Malzeme No', 'Malzeme Tanımı', 'Net Adet', 'Net Tutar (TL)', 'Kayıp (Adet)', 'Buldum (Adet)']
+                                
+                                # Sütunları okunaklı sıraya sok
+                                guncel_sku_ozet = guncel_sku_ozet[['Ürün Tipi', 'Malzeme No', 'Malzeme Tanımı', 'Kayıp (Adet)', 'Buldum (Adet)', 'Net Adet', 'Net Tutar (TL)']]
+                                
                                 guncel_sku_ozet = guncel_sku_ozet.sort_values(by=['Ürün Tipi', 'Net Tutar (TL)'], ascending=[True, False])
                                 
                                 st.dataframe(guncel_sku_ozet.style.format({
@@ -305,21 +316,30 @@ if len(uploaded_files) >= 2:
                         
                     dp = deep_base_df.pivot_table(index=['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'], columns='Rapor_Tarihi', values=['Stokta Bulunan', 'Birim Fiyat'], aggfunc={'Stokta Bulunan': 'sum', 'Birim Fiyat': 'mean'}).fillna(0)
                     
-                    # DÜZELTME BURADA: Tek gün yüklenmesi sorununu çözen mantık güncellendi
                     if ('Stokta Bulunan', ilk_tarih) in dp.columns and ('Stokta Bulunan', son_tarih) in dp.columns and ilk_tarih != son_tarih:
                         dp[('Analiz', 'Fark_Adet')] = dp[('Stokta Bulunan', son_tarih)] - dp[('Stokta Bulunan', ilk_tarih)]
                     else:
                         dp[('Analiz', 'Fark_Adet')] = 0
                         
                     def b_d(r):
-                        if ('Stokta Bulunan', son_tarih) in r and r[('Stokta Bulunan', son_tarih)] == 0: return "EŞİTLENDİ"
-                        elif r[('Analiz', 'Fark_Adet')] > 0: return "KAYIP"
-                        elif r[('Analiz', 'Fark_Adet')] < 0: return "BULDUM"
-                        else: return "SABİT"
+                        stok_son = r[('Stokta Bulunan', son_tarih)] if ('Stokta Bulunan', son_tarih) in r else 0
+                        fark = r[('Analiz', 'Fark_Adet')]
                         
+                        if stok_son == 0: 
+                            return "EŞİTLENDİ"
+                            
+                        if ilk_tarih == son_tarih:
+                            if stok_son > 0: return "KAYIP"
+                            elif stok_son < 0: return "BULDUM"
+                            else: return "SABİT"
+                        else:
+                            if fark > 0: return "KAYIP"
+                            elif fark < 0: return "BULDUM"
+                            else: return "SABİT"
+                            
                     dp[('Analiz', 'DURUM')] = dp.apply(b_d, axis=1)
-                    gf = dp['Birim Fiyat'].max(axis=1)
                     
+                    gf = dp['Birim Fiyat'].max(axis=1)
                     if ('Stokta Bulunan', son_tarih) in dp.columns:
                         dp[('Analiz', 'Güncel_Tutar_TL')] = dp[('Stokta Bulunan', son_tarih)] * gf
                     else:
