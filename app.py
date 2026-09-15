@@ -103,7 +103,7 @@ if uploaded_files:
     st.markdown(f"<div style='background-color:#e8f8f5; padding:5px; border-radius:5px; border:1px solid #2ecc71; color:#145a32; font-size:12px; font-weight:bold; margin-top:5px;'>✅ {len(uploaded_files)} Adet Rapor Analize Hazır</div>", unsafe_allow_html=True)
 
 # --- ANALİZ VE DASHBOARD ---
-if len(uploaded_files) >= 2:
+if len(uploaded_files) >= 1:
     with st.spinner("Veriler işleniyor, lütfen bekleyin..."):
         liste = []
         for f in uploaded_files:
@@ -165,7 +165,10 @@ if len(uploaded_files) >= 2:
                     
                     if depo_col:
                         depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
-                        html_etiketler = "<div style='display:flex; flex-wrap:wrap; gap:8px; margin-top:5px; margin-bottom:15px;'>"
+                        
+                        # --- YENİ MODERN BLOK KARTLAR TASARIMI ---
+                        html_etiketler = "<div style='display:flex; flex-wrap:wrap; gap:15px; margin-top:10px; margin-bottom:20px; padding: 15px; background-color:#f4f6f9; border-radius:10px;'>"
+                        
                         for _, row in depo_ozet.iterrows():
                             if str(row[depo_col]).lower() == 'nan' or str(row[depo_col]).lower() == 'none': continue
                             d_kayip_a = row['Kayıp_Adet']
@@ -173,11 +176,26 @@ if len(uploaded_files) >= 2:
                             d_buldum_a = abs(row['Buldum_Adet'])
                             d_buldum_t = format_money(abs(row['Buldum_Tutar']))
                             
-                            # DİKKAT: Burada += (artı eşittir) olmalı!
-                            html_etiketler += f"<div style='background-color:#ffffff; border: 1px solid #d1d8e0; border-radius: 6px; padding: 8px 16px; font-size:16px; color:#2c3e50; box-shadow: 0 2px 4px rgba(0,0,0,0.08);'><b>🏢 {row[depo_col]}</b> &nbsp;|&nbsp; <span style='color:#c0392b;'>🔻 K: <b>{d_kayip_a:,.0f}</b> <span style='font-size:14px; font-weight:normal;'>({d_kayip_t})</span></span> &nbsp;|&nbsp; <span style='color:#1e8449;'>🟢 B: <b>{d_buldum_a:,.0f}</b> <span style='font-size:14px; font-weight:normal;'>({d_buldum_t})</span></span></div>"
+                            html_etiketler += f"""
+                            <div style="flex:1; min-width: 200px; background:#ffffff; border-top: 5px solid #3498db; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                                <div style="text-align:center; margin-bottom:12px; color:#2c3e50; font-size:18px; font-weight:900;">🏢 {row[depo_col]} DEPOSU</div>
+                                <div style="display:flex; justify-content: space-between; border-top: 1px solid #eee; padding-top: 10px;">
+                                    <div style="text-align:center;">
+                                        <div style="font-size:12px; color:#7f8c8d; margin-bottom:3px;">🔻 Kayıp</div>
+                                        <div style="color:#c0392b; font-size:18px; font-weight:bold;">{d_kayip_a:,.0f} <span style="font-size:13px; font-weight:normal;">({d_kayip_t})</span></div>
+                                    </div>
+                                    <div style="width: 1px; background-color: #eee;"></div>
+                                    <div style="text-align:center;">
+                                        <div style="font-size:12px; color:#7f8c8d; margin-bottom:3px;">🟢 Buldum</div>
+                                        <div style="color:#1e8449; font-size:18px; font-weight:bold;">{d_buldum_a:,.0f} <span style="font-size:13px; font-weight:normal;">({d_buldum_t})</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            """
                             
                         html_etiketler += "</div>"
                         st.markdown(html_etiketler, unsafe_allow_html=True)
+                        # ------------------------------------------
 
                     dash_df = aktif_df[aktif_df['Ürün Tipi'].str.lower().isin([x.lower() for x in izlenecek_urunler])]
                     dash_grouped = dash_df.groupby(['Ürün Tipi', 'Rapor_Tarihi', 'Gercek_Tarih'])[['Stokta Bulunan', 'Toplam Fiyat', 'Kayıp_Adet', 'Buldum_Adet', 'Kayıp_Tutar', 'Buldum_Tutar']].sum().reset_index()
@@ -227,16 +245,16 @@ if len(uploaded_files) >= 2:
                         if guncel_sku_df.empty:
                             st.info(f"{son_tarih} tarihinde takip edilen kategorilerde veri bulunamadı.")
                         else:
-                            # 1. DÜZELTME: Doğrudan Net Adet ve Net Fiyatı topla (Eşitleme/Nötrleme Mantığı)
+                            # Eşitleme (Nötrleme) Mantığı
                             guncel_sku_ozet = guncel_sku_df.groupby(['Ürün Tipi', 'malzeme no', 'Malzeme Tanımı'])[['Stokta Bulunan', 'Toplam Fiyat']].sum().reset_index()
                             
-                            # 2. DÜZELTME: Depolar arası eşitlenmiş (Net Adet = 0) kayıtları tablodan tamamen at
+                            # Depolar arası eşitlenmiş (Net Adet = 0) kayıtları tablodan tamamen at
                             guncel_sku_ozet = guncel_sku_ozet[guncel_sku_ozet['Stokta Bulunan'] != 0].copy()
                             
                             if guncel_sku_ozet.empty:
                                 st.info(f"Gün {son_tarih} için tüm depolar arası eşitlenmiş olup, net hareketi olan SKU bulunamadı.")
                             else:
-                                # 3. DÜZELTME: Geriye kalan Net rakamlar üzerinden Kayıp ve Buldum atamasını yeniden yap
+                                # Geriye kalan Net rakamlar üzerinden Kayıp ve Buldum atamasını yeniden yap
                                 guncel_sku_ozet['Kayıp (Adet)'] = guncel_sku_ozet['Stokta Bulunan'].apply(lambda x: x if x > 0 else 0)
                                 guncel_sku_ozet['Buldum (Adet)'] = guncel_sku_ozet['Stokta Bulunan'].apply(lambda x: x if x < 0 else 0)
                                 
@@ -244,7 +262,6 @@ if len(uploaded_files) >= 2:
                                 
                                 # Sütunları okunaklı sıraya sok
                                 guncel_sku_ozet = guncel_sku_ozet[['Ürün Tipi', 'Malzeme No', 'Malzeme Tanımı', 'Kayıp (Adet)', 'Buldum (Adet)', 'Net Adet', 'Net Tutar (TL)']]
-                                
                                 guncel_sku_ozet = guncel_sku_ozet.sort_values(by=['Ürün Tipi', 'Net Tutar (TL)'], ascending=[True, False])
                                 
                                 st.dataframe(guncel_sku_ozet.style.format({
@@ -324,6 +341,7 @@ if len(uploaded_files) >= 2:
                     else:
                         dp[('Analiz', 'Fark_Adet')] = 0
                         
+                    # Tek gün durumunda SABİT hatasını çözen zeki mantık
                     def b_d(r):
                         stok_son = r[('Stokta Bulunan', son_tarih)] if ('Stokta Bulunan', son_tarih) in r else 0
                         fark = r[('Analiz', 'Fark_Adet')]
