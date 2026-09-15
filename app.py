@@ -165,7 +165,10 @@ if len(uploaded_files) >= 2:
                     
                     if depo_col:
                         depo_ozet = guncel_master_df.groupby(depo_col)[['Kayıp_Adet', 'Kayıp_Tutar', 'Buldum_Adet', 'Buldum_Tutar']].sum().reset_index()
-                        html_etiketler = "<div style='display:flex; flex-wrap:wrap; gap:8px; margin-top:5px; margin-bottom:15px;'>"
+                        
+                        # --- YENİ MODERN BLOK KARTLAR TASARIMI ---
+                        html_etiketler = "<div style='display:flex; flex-wrap:wrap; gap:15px; margin-top:10px; margin-bottom:20px; padding: 15px; background-color:#f4f6f9; border-radius:10px;'>"
+                        
                         for _, row in depo_ozet.iterrows():
                             if str(row[depo_col]).lower() == 'nan' or str(row[depo_col]).lower() == 'none': continue
                             d_kayip_a = row['Kayıp_Adet']
@@ -173,8 +176,22 @@ if len(uploaded_files) >= 2:
                             d_buldum_a = abs(row['Buldum_Adet'])
                             d_buldum_t = format_money(abs(row['Buldum_Tutar']))
                             
-                            # DİKKAT: Burada += (artı eşittir) olmalı!
-                            html_etiketler += f"<div style='background-color:#ffffff; border: 1px solid #d1d8e0; border-radius: 6px; padding: 8px 16px; font-size:16px; color:#2c3e50; box-shadow: 0 2px 4px rgba(0,0,0,0.08);'><b>🏢 {row[depo_col]}</b> &nbsp;|&nbsp; <span style='color:#c0392b;'>🔻 K: <b>{d_kayip_a:,.0f}</b> <span style='font-size:14px; font-weight:normal;'>({d_kayip_t})</span></span> &nbsp;|&nbsp; <span style='color:#1e8449;'>🟢 B: <b>{d_buldum_a:,.0f}</b> <span style='font-size:14px; font-weight:normal;'>({d_buldum_t})</span></span></div>"
+                            html_etiketler += f"""
+                            <div style="flex:1; min-width: 200px; background:#ffffff; border-top: 5px solid #3498db; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                                <div style="text-align:center; margin-bottom:12px; color:#2c3e50; font-size:18px; font-weight:900;">🏢 {row[depo_col]} DEPOSU</div>
+                                <div style="display:flex; justify-content: space-between; border-top: 1px solid #eee; padding-top: 10px;">
+                                    <div style="text-align:center;">
+                                        <div style="font-size:12px; color:#7f8c8d; margin-bottom:3px;">🔻 Kayıp</div>
+                                        <div style="color:#c0392b; font-size:18px; font-weight:bold;">{d_kayip_a:,.0f} <span style="font-size:13px; font-weight:normal;">({d_kayip_t})</span></div>
+                                    </div>
+                                    <div style="width: 1px; background-color: #eee;"></div>
+                                    <div style="text-align:center;">
+                                        <div style="font-size:12px; color:#7f8c8d; margin-bottom:3px;">🟢 Buldum</div>
+                                        <div style="color:#1e8449; font-size:18px; font-weight:bold;">{d_buldum_a:,.0f} <span style="font-size:13px; font-weight:normal;">({d_buldum_t})</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            """
                             
                         html_etiketler += "</div>"
                         st.markdown(html_etiketler, unsafe_allow_html=True)
