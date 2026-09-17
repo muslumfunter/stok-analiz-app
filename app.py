@@ -173,8 +173,9 @@ if len(uploaded_files) >= 2:
                             d_buldum_a = abs(row['Buldum_Adet'])
                             d_buldum_t = format_money(abs(row['Buldum_Tutar']))
                             
-                            # DİKKAT: Burada += (artı eşittir) olmalı!
-html_etiketler += f"<div style='background-color:#ffffff; border: 1px solid #d1d8e0; border-radius: 6px; padding: 8px 16px; font-size:16px; color:#2c3e50; box-shadow: 0 2px 4px rgba(0,0,0,0.08);'><b>🏢 {row[depo_col]}</b> &nbsp;|&nbsp; <span style='color:#c0392b;'>🔻 K: <b>{d_kayip_a:,.0f} Adet</b> &nbsp;•&nbsp; <b>{d_kayip_t} TL</b></span> &nbsp;|&nbsp; <span style='color:#1e8449;'>🟢 B: <b>{d_buldum_a:,.0f} Adet</b> &nbsp;•&nbsp; <b>{d_buldum_t} TL</b></span></div>"                            
+                            # DİKKAT: Adet ve Tutarlar aynı fontta, ayrı ayrı gösteriliyor (İstediğiniz Değişiklik)
+                            html_etiketler += f"<div style='background-color:#ffffff; border: 1px solid #d1d8e0; border-radius: 6px; padding: 8px 16px; font-size:16px; color:#2c3e50; box-shadow: 0 2px 4px rgba(0,0,0,0.08);'><b>🏢 {row[depo_col]}</b> &nbsp;|&nbsp; <span style='color:#c0392b;'>🔻 K: <b>{d_kayip_a:,.0f} Adet</b> &nbsp;•&nbsp; <b>{d_kayip_t} TL</b></span> &nbsp;|&nbsp; <span style='color:#1e8449;'>🟢 B: <b>{d_buldum_a:,.0f} Adet</b> &nbsp;•&nbsp; <b>{d_buldum_t} TL</b></span></div>"
+                            
                         html_etiketler += "</div>"
                         st.markdown(html_etiketler, unsafe_allow_html=True)
 
